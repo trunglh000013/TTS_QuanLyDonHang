@@ -88,6 +88,8 @@ project.fragment.lock.json
 ## User secrets & môi trường cục bộ
 **/appsettings.*.local.json
 **/secrets.json
+appsettings.json
+ProductTest.Presentation/Properties/launchSettings.json
 *.pfx
 *.key
 .env
