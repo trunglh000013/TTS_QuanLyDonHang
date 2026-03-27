@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ProductTest.Application.Abstractions;
 using ProductTest.Infrastructure.Persistence;
+using System.Collections;
 using System.Data;
 using System.Globalization;
 using System.Reflection;
@@ -152,13 +153,7 @@ namespace ProductTest.Infrastructure.Common
             }
 
             var mappedParams = new DynamicParameters();
-            foreach (var p in sqlParameters)
-            {
-                var name = p.ParameterName.TrimStart('@');
-                var rawValue = dynamicParams.Get<object>(name);
-                var convertedValue = SqlParameterValueConverter.Convert(rawValue, p);
-                mappedParams.Add("@" + name, convertedValue, dbType: SqlParameterValueConverter.ToDbType(p.SqlDbType));
-            }
+            MapProcedureParameters(mappedParams, sqlParameters, parameters, dynamicParams);
 
             var affectedRows = await connection.ExecuteAsync(
                 sql: storeProcedureName,
@@ -171,6 +166,55 @@ namespace ProductTest.Infrastructure.Common
                 affectedRows);
 
             return affectedRows;
+        }
+
+        private static void MapProcedureParameters(
+            DynamicParameters mappedParams,
+            List<SqlParameter> sqlParameters,
+            object? parameters,
+            DynamicParameters dynamicParams)
+        {
+            foreach (var p in sqlParameters)
+            {
+                var name = p.ParameterName.TrimStart('@');
+
+                if (p.SqlDbType == SqlDbType.Structured)
+                {
+                    ArgumentNullException.ThrowIfNull(parameters);
+                    var table = BuildTvpIdListDataTable(parameters, name);
+                    var typeName = p.TypeName?.Trim();
+                    if (string.IsNullOrEmpty(typeName))
+                        throw new InvalidOperationException($"Stored procedure parameter '{p.ParameterName}' is table-valued but TypeName is missing.");
+                    mappedParams.Add("@" + name, table.AsTableValuedParameter(typeName));
+                    continue;
+                }
+
+                var rawValue = dynamicParams.Get<object>(name);
+                var convertedValue = SqlParameterValueConverter.Convert(rawValue, p);
+                mappedParams.Add("@" + name, convertedValue, dbType: SqlParameterValueConverter.ToDbType(p.SqlDbType));
+            }
+        }
+
+        private static DataTable BuildTvpIdListDataTable(object parameters, string parameterNameWithoutAt)
+        {
+            var prop = parameters.GetType().GetProperty(
+                parameterNameWithoutAt,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+            if (prop?.GetValue(parameters) is not IEnumerable enumerable)
+            {
+                throw new InvalidOperationException(
+                    $"Request type must expose property '{parameterNameWithoutAt}' as an enumerable of strings for TVP @{parameterNameWithoutAt}.");
+            }
+
+            var dataTable = new DataTable();
+            dataTable.Columns.Add("Id", typeof(string));
+            foreach (var item in enumerable)
+            {
+                if (item is string s && !string.IsNullOrWhiteSpace(s))
+                    dataTable.Rows.Add(s.Trim());
+            }
+
+            return dataTable;
         }
     }
 
@@ -277,6 +321,9 @@ namespace ProductTest.Infrastructure.Common
                 }
 
                 var type = prop.PropertyType;
+
+                if (value is IEnumerable<string>)
+                    continue;
 
                 // nếu là object phức tạp → flatten tiếp
                 if (type.IsClass && type != typeof(string))

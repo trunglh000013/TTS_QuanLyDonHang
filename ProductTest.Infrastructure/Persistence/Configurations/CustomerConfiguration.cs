@@ -15,6 +15,7 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
 
         builder.Property(e => e.Id).AsChar10Id();
         builder.Property(e => e.Code).AsVarchar20Code();
+        builder.Property(e => e.UserId).AsChar10IdNullable();
 
         builder.Property(e => e.Name).HasMaxLength(255).IsRequired();
         builder.Property(e => e.Email).HasMaxLength(255).IsRequired();
@@ -29,5 +30,10 @@ public sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
 
         builder.HasIndex(e => e.Code).IsUnique();
         builder.HasIndex(e => e.Email);
+
+        builder.HasOne(e => e.User)
+            .WithMany(u => u.Customers)
+            .HasForeignKey(e => e.UserId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }

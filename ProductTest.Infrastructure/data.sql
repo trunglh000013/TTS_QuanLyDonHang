@@ -58,13 +58,14 @@ CREATE TABLE Products (
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
     IsActive BIT DEFAULT 1,
-    ExpiredDT DATETIME NOT NULL,
+    ExpiredDT DATETIME NOT NULL
 );
 
 -- Customer Table
 CREATE TABLE Customers (
     Id CHAR(10) NOT NULL PRIMARY KEY,
     Code VARCHAR(20) NOT NULL UNIQUE,
+    UserId CHAR(10) NULL,
     Name NVARCHAR(255) NOT NULL,
     Email NVARCHAR(255) NOT NULL,
     Phone NVARCHAR(50) NULL,
@@ -83,7 +84,7 @@ CREATE TABLE Carts (
     CustomerCode VARCHAR(20) NULL,
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
-    IsActive BIT DEFAULT 1,
+    IsActive BIT DEFAULT 1
 );
 
 CREATE TABLE CartItems (
@@ -97,7 +98,7 @@ CREATE TABLE CartItems (
     Price DECIMAL(18,2) NOT NULL,
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
-    IsActive BIT DEFAULT 1,
+    IsActive BIT DEFAULT 1
 );
 
 -- Orders and OrderItems
@@ -113,7 +114,7 @@ CREATE TABLE Orders (
     TotalAmount DECIMAL(18,2) NOT NULL DEFAULT 0,
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
-    IsActive BIT DEFAULT 1,
+    IsActive BIT DEFAULT 1
 );
 
 CREATE TABLE OrderItems (
@@ -134,7 +135,7 @@ CREATE TABLE OrderItems (
     LineTotal DECIMAL(18,2) NOT NULL DEFAULT 0,
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
-    IsActive BIT DEFAULT 1,
+    IsActive BIT DEFAULT 1
 );
 
 -- ProductRatings Table
@@ -152,7 +153,7 @@ CREATE TABLE ProductRatings (
     Content NVARCHAR(MAX) NOT NULL,
     CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
     UpdatedAt DATETIME NULL,
-    IsActive BIT DEFAULT 1,
+    IsActive BIT DEFAULT 1
 );
 
 -- Constraints
@@ -208,31 +209,6 @@ ALTER TABLE Products
 ADD CONSTRAINT CK_Products_TaxRate CHECK (TaxRate >= 0 AND TaxRate <= 100);
 GO
 
--- Tax functions are defined before triggers so triggers can call them.
-CREATE FUNCTION dbo.fn_ApplyTax
-(
-    @Price DECIMAL(18,2) = 0,
-    @TaxRate DECIMAL(3,2) = 1.00
-)
-RETURNS DECIMAL(18,2)
-AS
-BEGIN
-    RETURN @Price * (1 + (@TaxRate / 100));
-END;
-GO
-
-CREATE FUNCTION dbo.fn_GetTaxAmount
-(
-    @Price DECIMAL(18,2) = 0,
-    @TaxRate DECIMAL(3,2) = 1.00
-)
-RETURNS DECIMAL(18,2)
-AS
-BEGIN
-    RETURN @Price * (@TaxRate / 100);
-END;
-GO
-
 -----------------------------
 -- SECTION 2: TRIGGERS (as original)
 -----------------------------
@@ -258,10 +234,11 @@ INSTEAD OF INSERT
 AS
 BEGIN
     SET NOCOUNT ON;
-    INSERT INTO dbo.Customers (Id, Code, Name, Email, Phone, Address, CreatedAt, UpdatedAt, IsActive)
+    INSERT INTO dbo.Customers (Id, Code, UserId, Name, Email, Phone, Address, CreatedAt, UpdatedAt, IsActive)
     SELECT
         N'C' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Customer AS NVARCHAR(9)), 9),
         N'CUS-' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Customer AS NVARCHAR(9)), 9),
+        i.UserId,
         i.Name, i.Email, i.Phone, i.Address,
         ISNULL(i.CreatedAt, SYSUTCDATETIME()), i.UpdatedAt, ISNULL(i.IsActive, CAST(1 AS BIT))
     FROM inserted AS i;
@@ -797,6 +774,35 @@ END
 GO
 
 -----------------------------
+-- SECTION: FUNCTIONS
+-----------------------------
+
+-- Tax functions used by stored procedures.
+CREATE FUNCTION dbo.fn_ApplyTax
+(
+    @Price DECIMAL(18,2) = 0,
+    @TaxRate DECIMAL(3,2) = 1.00
+)
+RETURNS DECIMAL(18,2)
+AS
+BEGIN
+    RETURN @Price * (1 + (@TaxRate / 100));
+END;
+GO
+
+CREATE FUNCTION dbo.fn_GetTaxAmount
+(
+    @Price DECIMAL(18,2) = 0,
+    @TaxRate DECIMAL(3,2) = 1.00
+)
+RETURNS DECIMAL(18,2)
+AS
+BEGIN
+    RETURN @Price * (@TaxRate / 100);
+END;
+GO
+
+-----------------------------
 -- SECTION 3: UNIVERSAL CRUD PROCEDURES FOR ALL TABLES
 -----------------------------
 
@@ -877,7 +883,6 @@ BEGIN
     IF EXISTS (SELECT 1 FROM Suppliers WHERE Name = @Name AND IsActive = 1)
     BEGIN
         RAISERROR(N'Supplier name already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -908,13 +913,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Suppliers WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Supplier not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
     IF EXISTS (SELECT 1 FROM Suppliers WHERE Name = @Name AND Id <> @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Supplier name already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -939,15 +942,16 @@ CREATE PROCEDURE dbo.usp_SupplierDelete
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Suppliers WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Supplier not found or already deleted', 16, 1);
+        RETURN;
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
-        IF NOT EXISTS (SELECT 1 FROM Suppliers WHERE Id = @Id AND IsActive = 1)
-        BEGIN
-            RAISERROR(N'Supplier not found or already deleted', 16, 1);
-            ROLLBACK TRANSACTION;
-            RETURN;
-        END
-        UPDATE Suppliers SET IsActive = 0, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id;
+            UPDATE Suppliers SET IsActive = 0, UpdatedAt = SYSUTCDATETIME() WHERE Id = @Id;
         COMMIT TRANSACTION;
     END TRY
     BEGIN CATCH
@@ -1022,7 +1026,6 @@ BEGIN
     IF EXISTS (SELECT 1 FROM Customers WHERE Email = @Email AND IsActive = 1)
     BEGIN
         RAISERROR(N'Customer email already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1053,13 +1056,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Customers WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Customer not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
     IF EXISTS (SELECT 1 FROM Customers WHERE Email = @Email AND Id <> @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Customer email already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1088,7 +1089,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Customers WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Customer not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1143,7 +1143,6 @@ BEGIN
     )
     BEGIN
         RAISERROR(N'Product with that name and category already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1192,14 +1191,12 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Products WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Product not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
     IF EXISTS (SELECT 1 FROM Products WHERE Name=@Name AND Category=@Category AND Id<>@Id AND IsActive=1)
     BEGIN
         RAISERROR(N'Product with that name and category already exists', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1349,7 +1346,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Products WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Product not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1409,7 +1405,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Customers WHERE Id = @CustomerId AND IsActive = 1)
     BEGIN
         RAISERROR(N'Customer does not exist', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1537,21 +1532,18 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Carts WHERE Id = @CartId AND IsActive = 1)
     BEGIN
         RAISERROR(N'Cart does not exist', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
     -- Validate Product
     IF NOT EXISTS (SELECT 1 FROM Products WHERE Id = @ProductId AND IsActive = 1)
     BEGIN
         RAISERROR(N'Product does not exist', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
     -- See if the item exists in cart
     IF NOT EXISTS (SELECT 1 FROM CartItems WHERE CartId = @CartId AND ProductId = @ProductId AND IsActive = 1)
     BEGIN
         RAISERROR(N'Item does not exist in the cart', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -1578,7 +1570,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Carts WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Cart not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -2057,29 +2048,27 @@ BEGIN
         RETURN;
     END
 
+    IF EXISTS (
+        SELECT 1
+        FROM @InputItems i
+        OUTER APPLY (
+            SELECT COALESCE(SUM(oi.Quantity), 0) AS CurrentQty
+            FROM OrderItems oi
+            WHERE oi.OrderId = @Id
+              AND oi.IsActive = 1
+              AND oi.ProductId = i.ProductId
+        ) cur
+        JOIN Products p ON p.Id = i.ProductId AND p.IsActive = 1
+        WHERE (i.Quantity - cur.CurrentQty) > 0
+          AND p.Stock < (i.Quantity - cur.CurrentQty)
+    )
+    BEGIN
+        RAISERROR(N'Not enough stock for one or more products', 16, 1);
+        RETURN;
+    END
+
     BEGIN TRY
         BEGIN TRANSACTION;
-
-            -- Validate stock availability (separate), based on delta NewQty - CurrentQty.
-            IF EXISTS (
-                SELECT 1
-                FROM @InputItems i
-                OUTER APPLY (
-                    SELECT COALESCE(SUM(oi.Quantity), 0) AS CurrentQty
-                    FROM OrderItems oi
-                    WHERE oi.OrderId = @Id
-                      AND oi.IsActive = 1
-                      AND oi.ProductId = i.ProductId
-                ) cur
-                JOIN Products p WITH (UPDLOCK, HOLDLOCK) ON p.Id = i.ProductId AND p.IsActive = 1
-                WHERE (i.Quantity - cur.CurrentQty) > 0
-                  AND p.Stock < (i.Quantity - cur.CurrentQty)
-            )
-            BEGIN
-                RAISERROR(N'Not enough stock for one or more products', 16, 1);
-                ROLLBACK TRANSACTION;
-                RETURN;
-            END
 
             DECLARE @Delta TABLE
             (
@@ -2198,7 +2187,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM Orders WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'Order not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -2379,7 +2367,6 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM ProductRatings WHERE Id = @Id AND IsActive = 1)
     BEGIN
         RAISERROR(N'ProductRating not found or already deleted', 16, 1);
-        ROLLBACK TRANSACTION;
         RETURN;
     END
 
@@ -2392,5 +2379,1772 @@ BEGIN
         IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
         THROW;
     END CATCH
+END
+GO
+
+------------------------------------------------
+-- SECTION AUTH: USERS / ROLES / PERMISSIONS
+------------------------------------------------
+
+-- Sequences
+CREATE SEQUENCE dbo.Seq_User AS BIGINT START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 999999999 NO CYCLE;
+GO
+CREATE SEQUENCE dbo.Seq_Role AS BIGINT START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 999999999 NO CYCLE;
+GO
+CREATE SEQUENCE dbo.Seq_Permission AS BIGINT START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 999999999 NO CYCLE;
+GO
+
+CREATE SEQUENCE dbo.Seq_UserToken AS BIGINT START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 999999999 NO CYCLE;
+GO
+
+-- Users Table
+CREATE TABLE Users (
+    Id CHAR(10) NOT NULL PRIMARY KEY,
+    Username NVARCHAR(100) NOT NULL UNIQUE,
+    Email NVARCHAR(255) NOT NULL UNIQUE,
+    PasswordHash NVARCHAR(255) NOT NULL,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1
+);
+GO
+
+ALTER TABLE Customers
+    ADD CONSTRAINT FK_Customers_Users FOREIGN KEY (UserId) REFERENCES Users(Id);
+GO
+
+-- Roles Table
+CREATE TABLE Roles (
+    Id CHAR(10) NOT NULL PRIMARY KEY,
+    Code VARCHAR(20) NOT NULL UNIQUE,
+    Name NVARCHAR(255) NOT NULL UNIQUE,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1
+);
+GO
+
+-- Permissions Table
+CREATE TABLE Permissions (
+    Id CHAR(10) NOT NULL PRIMARY KEY,
+    Code VARCHAR(20) NOT NULL UNIQUE,
+    Name NVARCHAR(255) NOT NULL UNIQUE,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1
+);
+GO
+
+-- UserRoles Table (join)
+CREATE TABLE UserRoles (
+    UserId CHAR(10) NOT NULL,
+    RoleId CHAR(10) NOT NULL,
+    RoleCode VARCHAR(20) NOT NULL,
+    RoleName NVARCHAR(255) NOT NULL,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1,
+    CONSTRAINT PK_UserRoles PRIMARY KEY (UserId, RoleId)
+);
+GO
+
+-- UserPermissions Table (join)
+CREATE TABLE UserPermissions (
+    UserId CHAR(10) NOT NULL,
+    PermissionId CHAR(10) NOT NULL,
+    PermissionCode VARCHAR(20) NOT NULL,
+    PermissionName NVARCHAR(255) NOT NULL,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1,
+    CONSTRAINT PK_UserPermissions PRIMARY KEY (UserId, PermissionId)
+);
+GO
+
+-- RolePermissions Table (join)
+CREATE TABLE RolePermissions (
+    RoleId CHAR(10) NOT NULL,
+    PermissionId CHAR(10) NOT NULL,
+    PermissionCode VARCHAR(20) NOT NULL,
+    PermissionName NVARCHAR(255) NOT NULL,
+    CreatedAt DATETIME DEFAULT SYSUTCDATETIME(),
+    UpdatedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1,
+    CONSTRAINT PK_RolePermissions PRIMARY KEY (RoleId, PermissionId)
+);
+GO
+
+-- UserToken (auth token store)
+CREATE TABLE UserToken (
+    Id CHAR(10) NOT NULL PRIMARY KEY,
+    UserId CHAR(10) NOT NULL,
+    RefreshToken NVARCHAR(2000) NOT NULL,
+    IssuedAt DATETIME NULL,
+    ExpiresAt DATETIME NULL,
+    RevokedAt DATETIME NULL,
+    IsActive BIT DEFAULT 1
+);
+GO
+
+-- FK Constraints
+ALTER TABLE UserRoles
+    ADD CONSTRAINT FK_UserRoles_Users FOREIGN KEY (UserId) REFERENCES Users(Id);
+GO
+
+ALTER TABLE UserRoles
+    ADD CONSTRAINT FK_UserRoles_Roles FOREIGN KEY (RoleId) REFERENCES Roles(Id);
+GO
+
+ALTER TABLE UserPermissions
+    ADD CONSTRAINT FK_UserPermissions_Users FOREIGN KEY (UserId) REFERENCES Users(Id);
+GO
+
+ALTER TABLE UserPermissions
+    ADD CONSTRAINT FK_UserPermissions_Permissions FOREIGN KEY (PermissionId) REFERENCES Permissions(Id);
+GO
+
+ALTER TABLE RolePermissions
+    ADD CONSTRAINT FK_RolePermissions_Roles FOREIGN KEY (RoleId) REFERENCES Roles(Id);
+GO
+
+ALTER TABLE RolePermissions
+    ADD CONSTRAINT FK_RolePermissions_Permissions FOREIGN KEY (PermissionId) REFERENCES Permissions(Id);
+GO
+
+ALTER TABLE UserToken
+    ADD CONSTRAINT FK_UserToken_Users FOREIGN KEY (UserId) REFERENCES Users(Id);
+GO
+
+-- TVP: batch id lists (user-role, user-permission, role-permission grant/revoke)
+CREATE TYPE dbo.Tvp_IdList AS TABLE (
+    Id NVARCHAR(50) NOT NULL
+);
+GO
+
+CREATE TRIGGER dbo.trg_UserToken_InsteadOfInsert
+ON dbo.UserToken
+INSTEAD OF INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.UserToken (Id, UserId, RefreshToken, IssuedAt, ExpiresAt, RevokedAt, IsActive)
+    SELECT
+        N'W' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_UserToken AS NVARCHAR(9)), 9),
+        i.UserId,
+        i.RefreshToken,
+        i.IssuedAt,
+        i.ExpiresAt,
+        i.RevokedAt,
+        ISNULL(i.IsActive, CAST(1 AS BIT))
+    FROM inserted AS i;
+END
+GO
+
+-- Triggers: generate Id for Users, and Id+Code for Roles/Permissions
+CREATE TRIGGER dbo.trg_Users_InsteadOfInsert
+ON dbo.Users
+INSTEAD OF INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.Users (Id, Username, Email, PasswordHash, CreatedAt, UpdatedAt, IsActive)
+    SELECT
+        N'U' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_User AS NVARCHAR(9)), 9),
+        i.Username,
+        i.Email,
+        i.PasswordHash,
+        ISNULL(i.CreatedAt, SYSUTCDATETIME()),
+        i.UpdatedAt,
+        ISNULL(i.IsActive, CAST(1 AS BIT))
+    FROM inserted AS i;
+END
+GO
+
+CREATE TRIGGER dbo.trg_Roles_InsteadOfInsert
+ON dbo.Roles
+INSTEAD OF INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.Roles (Id, Code, Name, CreatedAt, UpdatedAt, IsActive)
+    SELECT
+        N'R' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Role AS NVARCHAR(9)), 9),
+        N'ROLE-' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Role AS NVARCHAR(9)), 9),
+        i.Name,
+        ISNULL(i.CreatedAt, SYSUTCDATETIME()),
+        i.UpdatedAt,
+        ISNULL(i.IsActive, CAST(1 AS BIT))
+    FROM inserted AS i;
+END
+GO
+
+CREATE TRIGGER dbo.trg_Permissions_InsteadOfInsert
+ON dbo.Permissions
+INSTEAD OF INSERT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    INSERT INTO dbo.Permissions (Id, Code, Name, CreatedAt, UpdatedAt, IsActive)
+    SELECT
+        N'P' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Permission AS NVARCHAR(9)), 9),
+        N'PERM-' + RIGHT(REPLICATE(N'0', 9) + CAST(NEXT VALUE FOR dbo.Seq_Permission AS NVARCHAR(9)), 9),
+        i.Name,
+        ISNULL(i.CreatedAt, SYSUTCDATETIME()),
+        i.UpdatedAt,
+        ISNULL(i.IsActive, CAST(1 AS BIT))
+    FROM inserted AS i;
+END
+GO
+
+-- ============================================================
+-- SEED DATA: Users, Roles, Permissions, RolePermission, UserRole, UserPermission, UserToken
+-- Đăng nhập mẫu (cùng mật khẩu): Admin@123
+--   admin@producttest.local  -> role Administrator
+--   manager@producttest.local -> role Manager
+--   demo@producttest.local    -> role Customer + trực tiếp users.write
+-- ============================================================
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE Name = N'Administrator')
+BEGIN
+    INSERT INTO dbo.Roles (Name) VALUES (N'Administrator'), (N'Manager'), (N'Customer');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Permissions WHERE Name = N'users.read')
+BEGIN
+    INSERT INTO dbo.Permissions (Name) VALUES
+        (N'users.read'),
+        (N'users.write'),
+        (N'products.read'),
+        (N'orders.manage'),
+        (N'admin.roles');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Users WHERE Username = N'admin')
+BEGIN
+    INSERT INTO dbo.Users (Username, Email, PasswordHash) VALUES
+        (N'admin', N'admin@producttest.local', N'$2a$11$Yv82yhISBl.DysEh1SyXYehe9cC33T4gXGlhqQyqqSEtiJ.wmCxJe'),
+        (N'manager', N'manager@producttest.local', N'$2a$11$Yv82yhISBl.DysEh1SyXYehe9cC33T4gXGlhqQyqqSEtiJ.wmCxJe'),
+        (N'demo', N'demo@producttest.local', N'$2a$11$Yv82yhISBl.DysEh1SyXYehe9cC33T4gXGlhqQyqqSEtiJ.wmCxJe');
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.UserRoles ur
+    INNER JOIN dbo.Users u ON u.Id = ur.UserId AND u.Username = N'admin'
+    INNER JOIN dbo.Roles r ON r.Id = ur.RoleId AND r.Name = N'Administrator'
+)
+BEGIN
+    INSERT INTO dbo.UserRoles (UserId, RoleId, RoleCode, RoleName)
+    SELECT u.Id, r.Id, r.Code, r.Name FROM dbo.Users u CROSS JOIN dbo.Roles r
+    WHERE u.Username = N'admin' AND r.Name = N'Administrator';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.UserRoles ur
+    INNER JOIN dbo.Users u ON u.Id = ur.UserId AND u.Username = N'manager'
+    INNER JOIN dbo.Roles r ON r.Id = ur.RoleId AND r.Name = N'Manager'
+)
+BEGIN
+    INSERT INTO dbo.UserRoles (UserId, RoleId, RoleCode, RoleName)
+    SELECT u.Id, r.Id, r.Code, r.Name FROM dbo.Users u CROSS JOIN dbo.Roles r
+    WHERE u.Username = N'manager' AND r.Name = N'Manager';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.UserRoles ur
+    INNER JOIN dbo.Users u ON u.Id = ur.UserId AND u.Username = N'demo'
+    INNER JOIN dbo.Roles r ON r.Id = ur.RoleId AND r.Name = N'Customer'
+)
+BEGIN
+    INSERT INTO dbo.UserRoles (UserId, RoleId, RoleCode, RoleName)
+    SELECT u.Id, r.Id, r.Code, r.Name FROM dbo.Users u CROSS JOIN dbo.Roles r
+    WHERE u.Username = N'demo' AND r.Name = N'Customer';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp
+    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Administrator'
+)
+BEGIN
+    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+    SELECT r.Id, p.Id, p.Code, p.Name
+    FROM dbo.Roles r CROSS JOIN dbo.Permissions p
+    WHERE r.Name = N'Administrator';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp
+    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Manager'
+)
+BEGIN
+    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+    SELECT r.Id, p.Id, p.Code, p.Name
+    FROM dbo.Roles r INNER JOIN dbo.Permissions p ON p.Name IN (N'users.read', N'products.read', N'orders.manage')
+    WHERE r.Name = N'Manager';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp
+    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Customer'
+)
+BEGIN
+    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+    SELECT r.Id, p.Id, p.Code, p.Name
+    FROM dbo.Roles r INNER JOIN dbo.Permissions p ON p.Name = N'products.read'
+    WHERE r.Name = N'Customer';
+END
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.UserPermissions up
+    INNER JOIN dbo.Users u ON u.Id = up.UserId AND u.Username = N'demo'
+    INNER JOIN dbo.Permissions p ON p.Id = up.PermissionId AND p.Name = N'users.write'
+)
+BEGIN
+    INSERT INTO dbo.UserPermissions (UserId, PermissionId, PermissionCode, PermissionName)
+    SELECT u.Id, p.Id, p.Code, p.Name
+    FROM dbo.Users u CROSS JOIN dbo.Permissions p
+    WHERE u.Username = N'demo' AND p.Name = N'users.write';
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.UserToken WHERE RefreshToken = N'seed-refresh-token-admin-001')
+BEGIN
+    INSERT INTO dbo.UserToken (UserId, RefreshToken, IssuedAt, ExpiresAt)
+    SELECT u.Id, N'seed-refresh-token-admin-001', SYSUTCDATETIME(), DATEADD(DAY, 7, SYSUTCDATETIME())
+    FROM dbo.Users u WHERE u.Username = N'admin' AND u.IsActive = 1;
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.UserToken WHERE RefreshToken = N'seed-refresh-token-demo-001')
+BEGIN
+    INSERT INTO dbo.UserToken (UserId, RefreshToken, IssuedAt, ExpiresAt)
+    SELECT u.Id, N'seed-refresh-token-demo-001', SYSUTCDATETIME(), DATEADD(DAY, 30, SYSUTCDATETIME())
+    FROM dbo.Users u WHERE u.Username = N'demo' AND u.IsActive = 1;
+END
+GO
+
+-- ============================================================
+-- USERS CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_UserGetAll
+    @PageNumber NVARCHAR(50) = N'1',
+    @PageSize NVARCHAR(50) = N'10'
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @PageNumberValue INT = TRY_CONVERT(INT, @PageNumber);
+    DECLARE @PageSizeValue INT = TRY_CONVERT(INT, @PageSize);
+    IF @PageNumberValue IS NULL OR @PageSizeValue IS NULL
+    BEGIN
+        RAISERROR(N'Invalid paging input', 16, 1);
+        RETURN;
+    END
+
+    SELECT
+        u.Id,
+        u.Username,
+        u.Email,
+        u.IsActive,
+        u.CreatedAt,
+        u.UpdatedAt
+    FROM Users u
+    WHERE u.IsActive = 1
+    ORDER BY u.CreatedAt DESC
+    OFFSET (@PageNumberValue - 1) * @PageSizeValue ROWS
+    FETCH NEXT @PageSizeValue ROWS ONLY;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserGetById
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        u.Id,
+        u.Username,
+        u.Email,
+        u.PasswordHash,
+        u.IsActive,
+        u.CreatedAt,
+        u.UpdatedAt
+    FROM Users u
+    WHERE u.Id = @Id AND u.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserGetByEmail
+    @Email NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        u.Id,
+        u.Username,
+        u.Email,
+        u.PasswordHash,
+        u.IsActive,
+        u.CreatedAt,
+        u.UpdatedAt
+    FROM Users u
+    WHERE u.Email = @Email AND u.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserCreate
+    @Username NVARCHAR(100),
+    @Email NVARCHAR(255),
+    @PasswordHash NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM Users WHERE (Username = @Username OR Email = @Email) AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User already exists (username or email).', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO Users(Username, Email, PasswordHash)
+            VALUES (@Username, @Email, @PasswordHash);
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserUpdate
+    @Id NVARCHAR(50),
+    @Username NVARCHAR(100),
+    @Email NVARCHAR(255),
+    @PasswordHash NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1 FROM Users
+        WHERE (Username = @Username OR Email = @Email)
+          AND Id <> @Id
+          AND IsActive = 1
+    )
+    BEGIN
+        RAISERROR(N'Username or email already in use.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Users
+            SET Username = @Username,
+                Email = @Email,
+                PasswordHash = @PasswordHash,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserDelete
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Users
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserLogin
+    @UserId NVARCHAR(50),
+    @RefreshToken NVARCHAR(2000),
+    @IssuedAt DATETIME,
+    @ExpiresAt DATETIME
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @UserId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO UserToken (UserId, RefreshToken, IssuedAt, ExpiresAt)
+            VALUES (@UserId, @RefreshToken, @IssuedAt, @ExpiresAt);
+
+            UPDATE Users
+            SET UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @UserId AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserLogout
+    @RefreshToken NVARCHAR(2000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE UserToken
+            SET IsActive = 0,
+                RevokedAt = SYSUTCDATETIME()
+            WHERE RefreshToken = @RefreshToken
+              AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRefreshToken
+    @RefreshToken NVARCHAR(2000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE UserToken
+            SET IsActive = 0,
+                RevokedAt = SYSUTCDATETIME()
+            WHERE RefreshToken = @RefreshToken
+              AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRegister
+    @Username NVARCHAR(100),
+    @Email NVARCHAR(255),
+    @Password NVARCHAR(255),
+    @RoleIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM Users WHERE (Username = @Username OR Email = @Email) AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User already exists (username or email).', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @EffectiveRoleIds TABLE (Id NVARCHAR(50) NOT NULL PRIMARY KEY);
+    INSERT INTO @EffectiveRoleIds(Id)
+    SELECT DISTINCT t.Id
+    FROM @RoleIds t
+    WHERE NULLIF(LTRIM(RTRIM(t.Id)), N'') IS NOT NULL;
+
+    IF NOT EXISTS (SELECT 1 FROM @EffectiveRoleIds)
+    BEGIN
+        INSERT INTO @EffectiveRoleIds(Id)
+        SELECT TOP 1 r.Id
+        FROM Roles r
+        WHERE r.Name = N'Customer' AND r.IsActive = 1;
+
+        IF NOT EXISTS (SELECT 1 FROM @EffectiveRoleIds)
+        BEGIN
+            RAISERROR(N'Default role ''Customer'' does not exist or is inactive.', 16, 1);
+            RETURN;
+        END
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @EffectiveRoleIds e
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM Roles r
+            WHERE r.Id = e.Id AND r.IsActive = 1
+        )
+    )
+    BEGIN
+        RAISERROR(N'One or more roles were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO Users(Username, Email, PasswordHash)
+            VALUES (@Username, @Email, @Password);
+
+            DECLARE @NewUserId CHAR(10);
+            SELECT TOP 1 @NewUserId = u.Id
+            FROM Users u
+            WHERE u.Username = @Username AND u.Email = @Email AND u.IsActive = 1
+            ORDER BY u.CreatedAt DESC;
+
+            INSERT INTO UserRoles (UserId, RoleId, RoleCode, RoleName)
+            SELECT @NewUserId, r.Id, r.Code, r.Name
+            FROM @EffectiveRoleIds e
+            INNER JOIN Roles r ON r.Id = e.Id AND r.IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserGrantRole
+    @UserId NVARCHAR(50),
+    @RoleIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @RoleIds)
+    BEGIN
+        RAISERROR(N'RoleIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @UserId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @RoleIds t
+        WHERE NOT EXISTS (SELECT 1 FROM Roles r WHERE r.Id = t.Id AND r.IsActive = 1)
+    )
+    BEGIN
+        RAISERROR(N'One or more roles were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO UserRoles (UserId, RoleId, RoleCode, RoleName)
+            SELECT @UserId, t.Id, r.Code, r.Name
+            FROM @RoleIds t
+            INNER JOIN Roles r ON r.Id = t.Id AND r.IsActive = 1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM UserRoles ur
+                WHERE ur.UserId = @UserId AND ur.RoleId = t.Id AND ur.IsActive = 1
+            );
+
+            ;WITH PermissionSnapshot AS
+            (
+                SELECT DISTINCT
+                    @UserId AS UserId,
+                    rp.PermissionId,
+                    rp.PermissionCode,
+                    rp.PermissionName
+                FROM @RoleIds t
+                INNER JOIN RolePermissions rp
+                    ON rp.RoleId = t.Id
+                   AND rp.IsActive = 1
+            )
+            UPDATE up
+            SET up.IsActive = 1,
+                up.PermissionCode = ps.PermissionCode,
+                up.PermissionName = ps.PermissionName,
+                up.UpdatedAt = SYSUTCDATETIME()
+            FROM UserPermissions up
+            INNER JOIN PermissionSnapshot ps
+                ON ps.UserId = up.UserId
+               AND ps.PermissionId = up.PermissionId
+            WHERE up.IsActive = 0;
+
+            INSERT INTO UserPermissions (UserId, PermissionId, PermissionCode, PermissionName)
+            SELECT
+                ps.UserId,
+                ps.PermissionId,
+                ps.PermissionCode,
+                ps.PermissionName
+            FROM PermissionSnapshot ps
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM UserPermissions up
+                WHERE up.UserId = ps.UserId
+                  AND up.PermissionId = ps.PermissionId
+            );
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRevokeRole
+    @UserId NVARCHAR(50),
+    @RoleIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @RoleIds)
+    BEGIN
+        RAISERROR(N'RoleIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @RoleIds t
+        WHERE NOT EXISTS (
+            SELECT 1 FROM UserRoles ur
+            WHERE ur.UserId = @UserId AND ur.RoleId = t.Id AND ur.IsActive = 1
+        )
+    )
+    BEGIN
+        RAISERROR(N'One or more UserRole assignments were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE ur
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            FROM UserRoles ur
+            INNER JOIN @RoleIds t ON ur.RoleId = t.Id
+            WHERE ur.UserId = @UserId AND ur.IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserGrantPermission
+    @UserId NVARCHAR(50),
+    @PermissionIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @PermissionIds)
+    BEGIN
+        RAISERROR(N'PermissionIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @UserId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @PermissionIds t
+        WHERE NOT EXISTS (SELECT 1 FROM Permissions p WHERE p.Id = t.Id AND p.IsActive = 1)
+    )
+    BEGIN
+        RAISERROR(N'One or more permissions were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO UserPermissions (UserId, PermissionId, PermissionCode, PermissionName)
+            SELECT @UserId, t.Id, p.Code, p.Name
+            FROM @PermissionIds t
+            INNER JOIN Permissions p ON p.Id = t.Id AND p.IsActive = 1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM UserPermissions up
+                WHERE up.UserId = @UserId AND up.PermissionId = t.Id AND up.IsActive = 1
+            );
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRevokePermission
+    @UserId NVARCHAR(50),
+    @PermissionIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @PermissionIds)
+    BEGIN
+        RAISERROR(N'PermissionIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @PermissionIds t
+        WHERE NOT EXISTS (
+            SELECT 1 FROM UserPermissions up
+            WHERE up.UserId = @UserId AND up.PermissionId = t.Id AND up.IsActive = 1
+        )
+    )
+    BEGIN
+        RAISERROR(N'One or more UserPermission assignments were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE up
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            FROM UserPermissions up
+            INNER JOIN @PermissionIds t ON up.PermissionId = t.Id
+            WHERE up.UserId = @UserId AND up.IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================
+-- USER TOKENS (auth token store)
+-- ============================================================
+CREATE PROCEDURE dbo.usp_UserTokenGetByRefreshToken
+    @RefreshToken NVARCHAR(2000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        ut.Id,
+        ut.UserId,
+        ut.RefreshToken,
+        ut.IssuedAt,
+        ut.ExpiresAt,
+        ut.RevokedAt,
+        ut.IsActive
+    FROM UserToken ut
+    WHERE ut.RefreshToken = @RefreshToken
+      AND ut.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserTokenGetByUserId
+    @UserId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        ut.Id,
+        ut.UserId,
+        ut.RefreshToken,
+        ut.IssuedAt,
+        ut.ExpiresAt,
+        ut.RevokedAt,
+        ut.IsActive
+    FROM UserToken ut
+    WHERE ut.UserId = @UserId
+      AND ut.IsActive = 1
+    ORDER BY ut.IssuedAt DESC;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserTokenRevokeByRefreshToken
+    @RefreshToken NVARCHAR(2000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE UserToken
+            SET IsActive = 0,
+                RevokedAt = SYSUTCDATETIME()
+            WHERE RefreshToken = @RefreshToken
+              AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserTokenLogoutByRefreshToken
+    @RefreshToken NVARCHAR(2000)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            -- Logout: remove refresh token record.
+            DELETE FROM UserToken
+            WHERE RefreshToken = @RefreshToken
+              AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================
+-- ROLES CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_RoleGetAll
+    @PageNumber NVARCHAR(50) = N'1',
+    @PageSize NVARCHAR(50) = N'10'
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @PageNumberValue INT = TRY_CONVERT(INT, @PageNumber);
+    DECLARE @PageSizeValue INT = TRY_CONVERT(INT, @PageSize);
+    IF @PageNumberValue IS NULL OR @PageSizeValue IS NULL
+    BEGIN
+        RAISERROR(N'Invalid paging input', 16, 1);
+        RETURN;
+    END
+
+    SELECT
+        r.Id,
+        r.Code,
+        r.Name,
+        r.IsActive,
+        r.CreatedAt,
+        r.UpdatedAt
+    FROM Roles r
+    WHERE r.IsActive = 1
+    ORDER BY r.CreatedAt DESC
+    OFFSET (@PageNumberValue - 1) * @PageSizeValue ROWS
+    FETCH NEXT @PageSizeValue ROWS ONLY;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleGetById
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        r.Id,
+        r.Code,
+        r.Name,
+        r.IsActive,
+        r.CreatedAt,
+        r.UpdatedAt
+    FROM Roles r
+    WHERE r.Id = @Id AND r.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleGetByCode
+    @Code NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        r.Id,
+        r.Code,
+        r.Name,
+        r.IsActive,
+        r.CreatedAt,
+        r.UpdatedAt
+    FROM Roles r
+    WHERE r.Code = @Code AND r.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleCreate
+    @Name NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM Roles WHERE Name = @Name AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role name already exists.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO Roles(Name)
+            VALUES (@Name);
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleUpdate
+    @Id NVARCHAR(50),
+    @Name NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Roles WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM Roles WHERE Name = @Name AND Id <> @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role name already in use.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Roles
+            SET Name = @Name,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleDelete
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Roles WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Roles
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleGrantPermission
+    @RoleId NVARCHAR(50),
+    @PermissionIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @PermissionIds)
+    BEGIN
+        RAISERROR(N'PermissionIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Roles WHERE Id = @RoleId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @PermissionIds t
+        WHERE NOT EXISTS (SELECT 1 FROM Permissions p WHERE p.Id = t.Id AND p.IsActive = 1)
+    )
+    BEGIN
+        RAISERROR(N'One or more permissions were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+            SELECT @RoleId, t.Id, p.Code, p.Name
+            FROM @PermissionIds t
+            INNER JOIN Permissions p ON p.Id = t.Id AND p.IsActive = 1
+            WHERE NOT EXISTS (
+                SELECT 1 FROM RolePermissions rp
+                WHERE rp.RoleId = @RoleId AND rp.PermissionId = t.Id AND rp.IsActive = 1
+            );
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RoleRevokePermission
+    @RoleId NVARCHAR(50),
+    @PermissionIds dbo.Tvp_IdList READONLY
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM @PermissionIds)
+    BEGIN
+        RAISERROR(N'PermissionIds cannot be empty.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (
+        SELECT 1
+        FROM @PermissionIds t
+        WHERE NOT EXISTS (
+            SELECT 1 FROM RolePermissions rp
+            WHERE rp.RoleId = @RoleId AND rp.PermissionId = t.Id AND rp.IsActive = 1
+        )
+    )
+    BEGIN
+        RAISERROR(N'One or more RolePermission assignments were not found or are inactive.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE rp
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            FROM RolePermissions rp
+            INNER JOIN @PermissionIds t ON rp.PermissionId = t.Id
+            WHERE rp.RoleId = @RoleId AND rp.IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================
+-- PERMISSIONS CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_PermissionGetAll
+    @PageNumber NVARCHAR(50) = N'1',
+    @PageSize NVARCHAR(50) = N'10'
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @PageNumberValue INT = TRY_CONVERT(INT, @PageNumber);
+    DECLARE @PageSizeValue INT = TRY_CONVERT(INT, @PageSize);
+    IF @PageNumberValue IS NULL OR @PageSizeValue IS NULL
+    BEGIN
+        RAISERROR(N'Invalid paging input', 16, 1);
+        RETURN;
+    END
+
+    SELECT
+        p.Id,
+        p.Code,
+        p.Name,
+        p.IsActive,
+        p.CreatedAt,
+        p.UpdatedAt
+    FROM Permissions p
+    WHERE p.IsActive = 1
+    ORDER BY p.CreatedAt DESC
+    OFFSET (@PageNumberValue - 1) * @PageSizeValue ROWS
+    FETCH NEXT @PageSizeValue ROWS ONLY;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_PermissionGetById
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        p.Id,
+        p.Code,
+        p.Name,
+        p.IsActive,
+        p.CreatedAt,
+        p.UpdatedAt
+    FROM Permissions p
+    WHERE p.Id = @Id AND p.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_PermissionGetByCode
+    @Code NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        p.Id,
+        p.Code,
+        p.Name,
+        p.IsActive,
+        p.CreatedAt,
+        p.UpdatedAt
+    FROM Permissions p
+    WHERE p.Code = @Code AND p.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_PermissionCreate
+    @Name NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF EXISTS (SELECT 1 FROM Permissions WHERE Name = @Name AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission name already exists.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO Permissions(Name)
+            VALUES (@Name);
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_PermissionUpdate
+    @Id NVARCHAR(50),
+    @Name NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Permissions WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM Permissions WHERE Name = @Name AND Id <> @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission name already in use.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Permissions
+            SET Name = @Name,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_PermissionDelete
+    @Id NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Permissions WHERE Id = @Id AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE Permissions
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE Id = @Id AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+-- ============================================================
+-- USER ROLES (join) CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_UserRoleCreate
+    @UserId NVARCHAR(50),
+    @RoleId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @UserId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Roles WHERE Id = @RoleId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM UserRoles WHERE UserId = @UserId AND RoleId = @RoleId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'UserRole already exists.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @RoleCode VARCHAR(20);
+    DECLARE @RoleName NVARCHAR(255);
+
+    SELECT @RoleCode = Code, @RoleName = Name FROM Roles WHERE Id = @RoleId AND IsActive = 1;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO UserRoles(UserId, RoleId, RoleCode, RoleName) VALUES (@UserId, @RoleId, @RoleCode, @RoleName);
+
+            ;WITH PermissionSnapshot AS
+            (
+                SELECT DISTINCT
+                    @UserId AS UserId,
+                    rp.PermissionId,
+                    rp.PermissionCode,
+                    rp.PermissionName
+                FROM RolePermissions rp
+                WHERE rp.RoleId = @RoleId
+                  AND rp.IsActive = 1
+            )
+            UPDATE up
+            SET up.IsActive = 1,
+                up.PermissionCode = ps.PermissionCode,
+                up.PermissionName = ps.PermissionName,
+                up.UpdatedAt = SYSUTCDATETIME()
+            FROM UserPermissions up
+            INNER JOIN PermissionSnapshot ps
+                ON ps.UserId = up.UserId
+               AND ps.PermissionId = up.PermissionId
+            WHERE up.IsActive = 0;
+
+            INSERT INTO UserPermissions(UserId, PermissionId, PermissionCode, PermissionName)
+            SELECT
+                ps.UserId,
+                ps.PermissionId,
+                ps.PermissionCode,
+                ps.PermissionName
+            FROM PermissionSnapshot ps
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM UserPermissions up
+                WHERE up.UserId = ps.UserId
+                  AND up.PermissionId = ps.PermissionId
+            );
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRoleDelete
+    @UserId NVARCHAR(50),
+    @RoleId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM UserRoles WHERE UserId = @UserId AND RoleId = @RoleId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'UserRole not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE UserRoles
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE UserId = @UserId AND RoleId = @RoleId AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRoleGetByUserId
+    @UserId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        ur.UserId,
+        ur.RoleId,
+        ur.RoleCode,
+        ur.RoleName,
+        ur.IsActive,
+        ur.CreatedAt,
+        ur.UpdatedAt
+    FROM UserRoles ur
+    JOIN Roles r ON r.Id = ur.RoleId
+    JOIN Users u ON u.Id = ur.UserId
+    WHERE ur.UserId = @UserId
+      AND ur.IsActive = 1
+      AND r.IsActive = 1
+      AND u.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserRoleGetByRoleId
+    @RoleId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        ur.UserId,
+        ur.RoleId,
+        ur.RoleCode,
+        ur.RoleName,
+        ur.IsActive,
+        ur.CreatedAt,
+        ur.UpdatedAt
+    FROM UserRoles ur
+    JOIN Roles r ON r.Id = ur.RoleId
+    JOIN Users u ON u.Id = ur.UserId
+    WHERE ur.RoleId = @RoleId
+      AND ur.IsActive = 1
+      AND r.IsActive = 1
+      AND u.IsActive = 1;
+END
+GO
+
+-- ============================================================
+-- USER PERMISSIONS (join) CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_UserPermissionCreate
+    @UserId NVARCHAR(50),
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = @UserId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'User not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Permissions WHERE Id = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM UserPermissions WHERE UserId = @UserId AND PermissionId = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'UserPermission already exists.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @PermissionCode VARCHAR(20);
+    DECLARE @PermissionName NVARCHAR(255);
+
+    SELECT @PermissionCode = Code, @PermissionName = Name FROM Permissions WHERE Id = @PermissionId AND IsActive = 1;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO UserPermissions(UserId, PermissionId, PermissionCode, PermissionName) VALUES (@UserId, @PermissionId, @PermissionCode, @PermissionName);
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserPermissionDelete
+    @UserId NVARCHAR(50),
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM UserPermissions WHERE UserId = @UserId AND PermissionId = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'UserPermission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE UserPermissions
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE UserId = @UserId AND PermissionId = @PermissionId AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserPermissionGetByUserId
+    @UserId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        up.UserId,
+        up.PermissionId,
+        up.PermissionCode,
+        up.PermissionName,
+        up.IsActive,
+        up.CreatedAt,
+        up.UpdatedAt
+    FROM UserPermissions up
+    JOIN Permissions p ON p.Id = up.PermissionId
+    JOIN Users u ON u.Id = up.UserId
+    WHERE up.UserId = @UserId
+      AND up.IsActive = 1
+      AND p.IsActive = 1
+      AND u.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_UserPermissionGetByPermissionId
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        up.UserId,
+        up.PermissionId,
+        up.PermissionCode,
+        up.PermissionName,
+        up.IsActive,
+        up.CreatedAt,
+        up.UpdatedAt
+    FROM UserPermissions up
+    JOIN Permissions p ON p.Id = up.PermissionId
+    JOIN Users u ON u.Id = up.UserId
+    WHERE up.PermissionId = @PermissionId
+      AND up.IsActive = 1
+      AND p.IsActive = 1
+      AND u.IsActive = 1;
+END
+GO
+
+-- ============================================================
+-- ROLE PERMISSIONS (join) CRUD
+-- ============================================================
+CREATE PROCEDURE dbo.usp_RolePermissionCreate
+    @RoleId NVARCHAR(50),
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM Roles WHERE Id = @RoleId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Role not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF NOT EXISTS (SELECT 1 FROM Permissions WHERE Id = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'Permission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    IF EXISTS (SELECT 1 FROM RolePermissions WHERE RoleId = @RoleId AND PermissionId = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'RolePermission already exists.', 16, 1);
+        RETURN;
+    END
+
+    DECLARE @PermissionCode VARCHAR(20);
+    DECLARE @PermissionName NVARCHAR(255);
+
+    SELECT @PermissionCode = Code, @PermissionName = Name FROM Permissions WHERE Id = @PermissionId AND IsActive = 1;
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            INSERT INTO RolePermissions(RoleId, PermissionId, PermissionCode, PermissionName) VALUES (@RoleId, @PermissionId, @PermissionCode, @PermissionName);
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RolePermissionDelete
+    @RoleId NVARCHAR(50),
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM RolePermissions WHERE RoleId = @RoleId AND PermissionId = @PermissionId AND IsActive = 1)
+    BEGIN
+        RAISERROR(N'RolePermission not found or already deleted.', 16, 1);
+        RETURN;
+    END
+
+    BEGIN TRY
+        BEGIN TRANSACTION;
+            UPDATE RolePermissions
+            SET IsActive = 0,
+                UpdatedAt = SYSUTCDATETIME()
+            WHERE RoleId = @RoleId AND PermissionId = @PermissionId AND IsActive = 1;
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RolePermissionGetByRoleId
+    @RoleId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        rp.RoleId,
+        rp.PermissionId,
+        rp.PermissionCode,
+        rp.PermissionName,
+        rp.IsActive,
+        rp.CreatedAt,
+        rp.UpdatedAt
+    FROM RolePermissions rp
+    JOIN Permissions p ON p.Id = rp.PermissionId
+    JOIN Roles r ON r.Id = rp.RoleId
+    WHERE rp.RoleId = @RoleId
+      AND rp.IsActive = 1
+      AND p.IsActive = 1
+      AND r.IsActive = 1;
+END
+GO
+
+CREATE PROCEDURE dbo.usp_RolePermissionGetByPermissionId
+    @PermissionId NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT
+        rp.RoleId,
+        rp.PermissionId,
+        rp.PermissionCode,
+        rp.PermissionName,
+        rp.IsActive,
+        rp.CreatedAt,
+        rp.UpdatedAt
+    FROM RolePermissions rp
+    JOIN Permissions p ON p.Id = rp.PermissionId
+    JOIN Roles r ON r.Id = rp.RoleId
+    WHERE rp.PermissionId = @PermissionId
+      AND rp.IsActive = 1
+      AND p.IsActive = 1
+      AND r.IsActive = 1;
 END
 GO
