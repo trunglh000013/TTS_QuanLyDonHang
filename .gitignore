@@ -5,23 +5,26 @@
 ## Build & output
 [Bb]in/
 [Oo]bj/
-[Dd]ebug/
-[Rr]elease/
+[Dd]ebug*/
+[Rr]elease*/
 [Rr]eleases/
 x64/
 x86/
 [Ww][Ii][Nn]32/
 [Aa][Rr][Mm]/
 [Aa][Rr][Mm]64/
-bld/
-[Bb]uild/
+[Bb]ld/
+[Bb]uild*/
 [Ll]og/
 [Ll]ogs/
 [Tt]emp/
 [Tt]mp/
 out/
-artifacts/
+artifacts*/
 BenchmarkDotNet.Artifacts/
+coverage/
+.coverage/
+TestResults/
 
 ## Visual Studio / MSBuild
 .vs/
@@ -51,6 +54,14 @@ project.fragment.lock.json
 *_wpftmp.csproj
 *.pubxml.user
 *.publishproj
+# Rider & VS Code
+.idea/
+*.sln.iml
+*_ReSharper*/
+*.DotSettings.user
+# VS Code — uncomment if you don't want to commit workspace settings
+#.vscode/
+.history/
 
 ## C/C++ tooling (mixed solutions)
 *.ilk
@@ -75,32 +86,34 @@ project.fragment.lock.json
 !**/packages/build/
 *.nuget.props
 *.nuget.targets
+# Ignore NuGet config from machine
+NuGet.Config
 
-## JetBrains Rider / ReSharper
-.idea/
-*.sln.iml
-*_ReSharper*/
-*.DotSettings.user
-
-## VS Code — bỏ comment nếu không muốn commit cấu hình chung trong .vscode/
-# .vscode/
-
-## User secrets & môi trường cục bộ
+## Environment, local & secrets
 **/appsettings.*.local.json
 **/secrets.json
+appsettings.Local.json
+appsettings.Development.json
 appsettings.json
-ProductTest.Presentation/Properties/launchSettings.json
 *.pfx
 *.key
 .env
 .env.*
 !.env.example
+*.secret
+secrets/
 
-## OS
+# Local .NET tools & global settings
+.dotnet-tools.json
+
+## OS-generated files
 .DS_Store
 Thumbs.db
 Desktop.ini
 $RECYCLE.BIN/
+ehthumbs.db
+Icon?
+.AppleDouble
 
 ## ASP.NET / publish
 App_Data/*.mdf
@@ -110,8 +123,47 @@ App_Data/*.ldf
 *.azurePubxml
 Generated\ Files/
 _SchemaIgnore/
+publish/
+wwwroot/
 
-## Log / archive tạm
+## Log, archive, and dump
 *.log
 *.tgz
 *.tar.gz
+*.zip
+*.7z
+*.bak
+*.tmp
+*.temp
+*.dmp
+
+# config
+.config/
+*.config
+global.json
+
+# Node.js / JS / TypeScript (for frontends or hybrid projects)
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.package-lock.json
+pnpm-lock.yaml
+
+# Python (for scripts or automation in repo)
+__pycache__/
+*.pyc
+*.pyo
+
+# Miscellaneous
+.vscode-test/
+*.swp
+*.swo
+.idea/
+*.iml
+
+# Exclude backup files and editor swap files
+*~
+*.orig
+*.bak
