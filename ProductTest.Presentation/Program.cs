@@ -1,16 +1,18 @@
 using System.Globalization;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.Extensions.Options;
-using Microsoft.AspNetCore.Routing;
+using Microsoft.IdentityModel.Tokens;
 using ProductTest.Application;
 using ProductTest.Infrastructure;
 using ProductTest.Infrastructure.Persistence;
 using ProductTest.Presentation.Middleware;
 using Serilog;
-using Microsoft.AspNetCore.Mvc.ApiExplorer;
-using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -62,21 +64,91 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
     ];
 });
 
+// Configure Swagger with API versioning support
 builder.Services.AddSwaggerGen(options =>
 {
+    // Use full type name for schema IDs to avoid conflicts (e.g. MediaFileDto in MasterData.MediaFiles vs Media)
+    options.CustomSchemaIds(type => type.FullName);
+
+    // Include XML comments if available
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath);
+    }
+
     var provider = builder.Services.BuildServiceProvider()
         .GetRequiredService<IApiVersionDescriptionProvider>();
 
     foreach (var description in provider.ApiVersionDescriptions)
     {
-        options.SwaggerDoc(
-            description.GroupName,
-            new OpenApiInfo
-            {
-                Title = $"Product Test API {description.ApiVersion}",
-                Version = description.GroupName
-            });
+        options.SwaggerDoc(description.GroupName, new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = $"Product Test API {description.ApiVersion}",
+            Version = description.ApiVersion.ToString()
+        });
     }
+
+    // Add JWT Bearer authentication to Swagger
+    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+    {
+        Description = "JWT Authorization header using the Bearer scheme. Enter 'Bearer' [space] and then your token in the text input below.",
+        Name = "Authorization",
+        In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+        Scheme = "Bearer"
+    });
+
+    options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+    {
+        {
+            new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+            {
+                Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                {
+                    Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
+});
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Secret"] ?? "super_secret_key"))
+    };
+
+    options.SaveToken = true;
+});
+
+// Authorization
+builder.Services.AddAuthorization(options =>
+{
+    // Add default policy
+    options.DefaultPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+
+    // Fallback policy allows anonymous access (for Swagger, health checks, etc.)
+    options.FallbackPolicy = null; // Allow anonymous by default, controllers can require auth
 });
 
 var app = builder.Build();
@@ -99,8 +171,10 @@ if (app.Environment.IsDevelopment())
 
     app.UseSwaggerUI(options =>
     {
+        // Only add Swagger UI endpoints for available versions, removing hardcoded v2 reference.
         foreach (var description in apiVersionDescriptionProvider.ApiVersionDescriptions)
         {
+            // Ensure route matches the actual configured Swagger endpoint (do not reference "v2")
             options.SwaggerEndpoint(
                 $"/swagger/{description.GroupName}/swagger.json",
                 $"Product Test API {description.GroupName.ToUpperInvariant()}");
@@ -129,7 +203,10 @@ app.UseSerilogRequestLogging(options =>
         diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
     };
 });
+
 app.UseHttpsRedirection();
+
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
