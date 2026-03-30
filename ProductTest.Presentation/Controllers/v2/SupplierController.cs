@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Logging;
@@ -12,16 +13,19 @@ using ProductTest.Application.Features.v2.Suppliers.Queries.GetAllSupplier;
 using ProductTest.Application.Features.v2.Suppliers.Queries.GetSupplierByProductId;
 using ProductTest.Application.DTOs;
 using ProductTest.Application.DTOs.Response.Supplier;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
 [Route("api/v{version:apiVersion}/supplier")]
 public sealed class SupplierController(IMediator mediator, IStringLocalizer<SharedResource> localizer, ILogger<SupplierController> logger) : ControllerBase
 {
     [HttpPost("create")]
+    [AuthorizePermissions("supplier.create")]
     public async Task<IActionResult> Create([FromBody] CreateSupplierRequest request, CancellationToken cancellationToken)
     {
         logger.LogInformation("Create supplier request received for {SupplierName}", request.Name);
@@ -31,6 +35,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("supplier.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         logger.LogInformation("Delete supplier request received for {SupplierId}", id);
@@ -40,6 +45,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("supplier.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateSupplierBody request, CancellationToken cancellationToken)
     {
         logger.LogInformation("Update supplier request received for {SupplierId}", id);
@@ -49,6 +55,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-all")]
+    [AuthorizePermissions("supplier.read")]
     public async Task<IActionResult> GetAll(
         [FromBody] GetAllSupplierRequest request, CancellationToken cancellationToken)
     {
@@ -59,6 +66,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-by-code/{code}")]
+    [AuthorizePermissions("supplier.read")]
     public async Task<IActionResult> GetByCode(
         [FromRoute] string code, CancellationToken cancellationToken)
     {
@@ -69,6 +77,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("supplier.read")]
     public async Task<IActionResult> GetById(
         [FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -79,6 +88,7 @@ public sealed class SupplierController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-by-product-id/{productId}")]
+    [AuthorizePermissions("supplier.read")]
     public async Task<IActionResult> GetByProductId(
         [FromRoute] string productId, CancellationToken cancellationToken)
     {

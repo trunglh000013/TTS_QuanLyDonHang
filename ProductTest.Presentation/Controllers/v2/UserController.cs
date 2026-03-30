@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.DTOs;
@@ -14,16 +15,20 @@ using ProductTest.Application.Features.v2.Users.Commands.UpdateUser;
 using ProductTest.Application.Features.v2.Users.Queries.GetAllUsers;
 using ProductTest.Application.Features.v2.Users.Queries.GetUserByEmail;
 using ProductTest.Application.Features.v2.Users.Queries.GetUserById;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
+[AuthorizeRoles("Administrator", "Manager")]
 [Route("api/v{version:apiVersion}/user")]
 public sealed class UserController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
 {
     [HttpPost("get-all")]
+    [AuthorizePermissions("user.read")]
     public async Task<IActionResult> GetAll([FromBody] GetAllUserRequest request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetAllUsersQuery(request), cancellationToken);
@@ -31,6 +36,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("user.read")]
     public async Task<IActionResult> GetById([FromRoute] string id, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetUserByIdQuery(new GetUserByIdRequest { Id = id }), cancellationToken);
@@ -40,6 +46,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("get-by-email/{email}")]
+    [AuthorizePermissions("user.read")]
     public async Task<IActionResult> GetByEmail([FromRoute] string email, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetUserByEmailQuery(new GetUserByEmailRequest { Email = email }), cancellationToken);
@@ -49,6 +56,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("create")]
+    [AuthorizePermissions("user.create")]
     public async Task<IActionResult> Create([FromBody] CreateUserRequest request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new CreateUserCommand(request), cancellationToken);
@@ -56,6 +64,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("user.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateUserBody request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new UpdateUserCommand(new UpdateUserRequest { Id = id, Body = request }), cancellationToken);
@@ -63,6 +72,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("user.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new DeleteUserCommand(new DeleteUserRequest { Id = id }), cancellationToken);
@@ -70,6 +80,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("grant-role/{userId}")]
+    [AuthorizePermissions("user.grantRole")]
     public async Task<IActionResult> GrantRole([FromRoute] string userId, [FromRoute] List<string> roleIds, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GrantRoleCommand(new GrantRoleUserRequest { UserId = userId, RoleIds = roleIds }), cancellationToken);
@@ -77,6 +88,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("revoke-role/{userId}")]
+    [AuthorizePermissions("user.revokeRole")]
     public async Task<IActionResult> RevokeRole([FromRoute] string userId, [FromRoute] List<string> roleIds, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new RevokeRoleCommand(new RevokeRoleUserRequest { UserId = userId, RoleIds = roleIds }), cancellationToken);
@@ -84,6 +96,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("grant-permission/{userId}")]
+    [AuthorizePermissions("user.grantPermission")]
     public async Task<IActionResult> GrantPermission([FromRoute] string userId, [FromRoute] List<string> permissionIds, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GrantPermissionCommand(new GrantPermissionUserRequest { UserId = userId, PermissionIds = permissionIds }), cancellationToken);
@@ -91,6 +104,7 @@ public sealed class UserController(IMediator mediator, IStringLocalizer<SharedRe
     }
 
     [HttpPost("revoke-permission/{userId}")]
+    [AuthorizePermissions("user.revokePermission")]
     public async Task<IActionResult> RevokePermission([FromRoute] string userId, [FromRoute] List<string> permissionIds, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new RevokePermissionCommand(new RevokePermissionUserRequest { UserId = userId, PermissionIds = permissionIds }), cancellationToken);

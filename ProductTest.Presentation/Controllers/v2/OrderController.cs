@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.Features.v2.Orders.Commands.CreateOrder;
@@ -13,16 +14,19 @@ using ProductTest.Application.Features.v2.Orders.Queries.GetOrderDetail;
 using ProductTest.Application.Features.v2.Orders.Commands.CreateOrderByCartId;
 using ProductTest.Application.DTOs.Response.Order;
 using ProductTest.Application.DTOs;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
 [Route("api/v{version:apiVersion}/order")]
 public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
 {
     [HttpPost("create")]
+    [AuthorizePermissions("order.create")]
     public async Task<IActionResult> Create([FromBody] CreateOrderRequest request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new CreateOrderCommand(request), cancellationToken);
@@ -30,6 +34,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("create-by-cart-id/{cartId}")]
+    [AuthorizePermissions("order.create")]
     public async Task<IActionResult> CreateByCartId([FromRoute] string cartId, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new CreateOrderByCartIdCommand(new CreateOrderByCartIdRequest { CartId = cartId }), cancellationToken);
@@ -37,6 +42,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("order.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new DeleteOrderCommand(new DeleteOrderRequest { Id = id }), cancellationToken);
@@ -44,6 +50,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("order.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateOrderBody request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new UpdateOrderCommand(new UpdateOrderRequest { Id = id, UpdateOrderBody = request }), cancellationToken);
@@ -51,6 +58,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("get-all")]
+    [AuthorizePermissions("order.read")]
     public async Task<IActionResult> GetAll(
         [FromBody] GetAllOrderRequest request, CancellationToken cancellationToken)
     {
@@ -59,6 +67,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("get-by-code/{code}")]
+    [AuthorizePermissions("order.read")]
     public async Task<IActionResult> GetByCode(
         [FromRoute] string code, CancellationToken cancellationToken)
     {
@@ -67,6 +76,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("order.read")]
     public async Task<IActionResult> GetById(
         [FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -75,6 +85,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("get-by-customer-id/{customerId}")]
+    [AuthorizePermissions("order.read")]
     public async Task<IActionResult> GetByCustomerId(
         [FromRoute] string customerId, CancellationToken cancellationToken)
     {
@@ -83,6 +94,7 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
     }
 
     [HttpPost("get-detail/{orderId}")]
+    [AuthorizePermissions("order.read")]
     public async Task<IActionResult> GetDetail(
         [FromRoute] string orderId, CancellationToken cancellationToken)
     {
@@ -90,4 +102,3 @@ public sealed class OrderController(IMediator mediator, IStringLocalizer<SharedR
         return Ok(BaseApiResponse<GetOrderDetailResponse>.SuccessResult(result, localizer["OperationCompletedSuccessfully"]));
     }
 }
-
