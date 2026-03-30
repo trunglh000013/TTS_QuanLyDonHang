@@ -2,7 +2,11 @@ using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
+using ProductTest.Application.DTOs.Request.RolePermission;
 using ProductTest.Application.DTOs.Request.UserPermission;
+using ProductTest.Application.DTOs.Request.UserRole;
+using ProductTest.Application.Features.v2.RolePermissions.Queries.GetRolePermissionsByRoleId;
+using ProductTest.Application.Features.v2.UserRoles.Queries.GetUserRolesByUserId;
 using ProductTest.Application.Features.v2.UserPermissions.Queries.GetUserPermissionsByUserId;
 
 namespace ProductTest.Presentation.Authorization.Permission;
@@ -24,7 +28,6 @@ public class PermissionRequirementHandler : AuthorizationHandler<PermissionRequi
         AuthorizationHandlerContext context,
         PermissionRequirement requirement)
     {
-        // Get UserId from claims
         var userIdClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userIdClaim))
         {
@@ -32,36 +35,43 @@ public class PermissionRequirementHandler : AuthorizationHandler<PermissionRequi
             return;
         }
 
-        var response = await _mediator.Send(
+        var direct = await _mediator.Send(
             new GetUserPermissionsByUserIdQuery(new GetUserPermissionsByUserIdRequest { UserId = userIdClaim }),
             CancellationToken.None);
 
-        var userPermissionCodes = response.Items
-            .Select(x => x.PermissionCode)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in direct.Items)
+        {
+            AddIfPresent(identifiers, item.PermissionName);
+        }
 
-        if (userPermissionCodes.Count == 0)
+        if (identifiers.Count == 0)
         {
             _logger.LogWarning("No permissions found for user: {UserId}", userIdClaim);
             return;
         }
 
-        // Check if user has any of the required permissions
-        var hasRequiredPermission = requirement.AllowedPermissions.Any(allowedPermission =>
-            userPermissionCodes.Contains(allowedPermission, StringComparer.OrdinalIgnoreCase));
+        var hasRequiredPermission = requirement.AllowedPermissions.Any(required =>
+            identifiers.Contains(required));
 
         if (hasRequiredPermission)
         {
-            _logger.LogDebug("User {UserId} has required permission. Permissions: {UserPermissions}, Required: {RequiredPermissions}",
-                userIdClaim, string.Join(", ", userPermissionCodes), string.Join(", ", requirement.AllowedPermissions));
+            _logger.LogDebug(
+                "User {UserId} has required permission. Permissions: {UserPermissions}, Required: {RequiredPermissions}",
+                userIdClaim, string.Join(", ", identifiers), string.Join(", ", requirement.AllowedPermissions));
             context.Succeed(requirement);
         }
         else
         {
-            _logger.LogWarning("User {UserId} does not have required permission. User permissions: {UserPermissions}, Required: {RequiredPermissions}",
-                userIdClaim, string.Join(", ", userPermissionCodes), string.Join(", ", requirement.AllowedPermissions));
+            _logger.LogWarning(
+                "User {UserId} does not have required permission. User permissions: {UserPermissions}, Required: {RequiredPermissions}",
+                userIdClaim, string.Join(", ", identifiers), string.Join(", ", requirement.AllowedPermissions));
         }
+    }
+
+    private static void AddIfPresent(HashSet<string> set, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            set.Add(value.Trim());
     }
 }

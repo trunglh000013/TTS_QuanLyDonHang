@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.DTOs;
@@ -10,16 +11,20 @@ using ProductTest.Application.Features.v2.Permissions.Commands.UpdatePermission;
 using ProductTest.Application.Features.v2.Permissions.Queries.GetAllPermissions;
 using ProductTest.Application.Features.v2.Permissions.Queries.GetPermissionByCode;
 using ProductTest.Application.Features.v2.Permissions.Queries.GetPermissionById;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
+[AuthorizeRoles("Administrator")]
 [Route("api/v{version:apiVersion}/permission")]
 public sealed class PermissionController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
 {
     [HttpPost("get-all")]
+    [AuthorizePermissions("permission.read")]
     public async Task<IActionResult> GetAll([FromBody] GetAllPermissionRequest request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetAllPermissionsQuery(request), cancellationToken);
@@ -27,6 +32,7 @@ public sealed class PermissionController(IMediator mediator, IStringLocalizer<Sh
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("permission.read")]
     public async Task<IActionResult> GetById([FromRoute] string id, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetPermissionByIdQuery(new GetPermissionByIdRequest { Id = id }), cancellationToken);
@@ -36,6 +42,7 @@ public sealed class PermissionController(IMediator mediator, IStringLocalizer<Sh
     }
 
     [HttpPost("get-by-code/{code}")]
+    [AuthorizePermissions("permission.read")]
     public async Task<IActionResult> GetByCode([FromRoute] string code, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new GetPermissionByCodeQuery(new GetPermissionByCodeRequest { Code = code }), cancellationToken);
@@ -45,6 +52,7 @@ public sealed class PermissionController(IMediator mediator, IStringLocalizer<Sh
     }
 
     [HttpPost("create")]
+    [AuthorizePermissions("permission.create")]
     public async Task<IActionResult> Create([FromBody] CreatePermissionRequest request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new CreatePermissionCommand(request), cancellationToken);
@@ -52,6 +60,7 @@ public sealed class PermissionController(IMediator mediator, IStringLocalizer<Sh
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("permission.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdatePermissionBody request, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new UpdatePermissionCommand(new UpdatePermissionRequest { Id = id, Body = request }), cancellationToken);
@@ -59,6 +68,7 @@ public sealed class PermissionController(IMediator mediator, IStringLocalizer<Sh
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("permission.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         var response = await mediator.Send(new DeletePermissionCommand(new DeletePermissionRequest { Id = id }), cancellationToken);

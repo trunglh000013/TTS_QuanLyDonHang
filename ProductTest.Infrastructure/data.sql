@@ -2605,24 +2605,82 @@ GO
 -- Đăng nhập mẫu (cùng mật khẩu): Admin@123
 --   admin@producttest.local  -> role Administrator
 --   manager@producttest.local -> role Manager
---   demo@producttest.local    -> role Customer + trực tiếp users.write
+--   demo@producttest.local    -> role Customer + trực tiếp product.create/update/delete
+-- Permission naming: {resource}.{action} (ví dụ user.read, order.create)
+-- Map tới API v2 (AuthorizePermissions trên controller):
+--   auth.logout           -> POST .../auth/logout        (login/register/refresh-token: AllowAnonymous)
+--   cart.create           -> POST .../cart/create
+--   cart.delete           -> POST .../cart/delete/{id}
+--   cart.addItem          -> POST .../cart/add-item/{id}
+--   cart.removeItem       -> POST .../cart/delete-item/{id}
+--   cart.read             -> POST .../cart/get-all-items-by-customer/{customerId}
+--   customer.read         -> POST .../customer/get-all | get-by-code | get-by-id
+--   customer.create       -> POST .../customer/create
+--   customer.update       -> POST .../customer/update/{id}
+--   customer.delete       -> POST .../customer/delete/{id}
+--   order.read            -> POST .../order/get-all | get-by-* | get-detail
+--   order.create          -> POST .../order/create | create-by-cart-id/{cartId}
+--   order.update          -> POST .../order/update/{id}
+--   order.delete          -> POST .../order/delete/{id}
+--   permission.read       -> POST .../permission/get-all | get-by-id | get-by-code
+--   permission.create     -> POST .../permission/create
+--   permission.update     -> POST .../permission/update/{id}
+--   permission.delete     -> POST .../permission/delete/{id}
+--   product.read          -> POST .../product/get-all | get-by-id | search | filter
+--   product.create        -> POST .../product/create
+--   product.update        -> POST .../product/update/{id}
+--   product.delete        -> POST .../product/delete/{id}
+--   productRating.read    -> POST .../product-rating/get-all | get-by-*
+--   productRating.create  -> POST .../product-rating/create
+--   productRating.update  -> POST .../product-rating/update/{id}
+--   productRating.delete  -> POST .../product-rating/delete/{id}
+--   role.read             -> POST .../role/get-all | get-by-id | get-by-code
+--   role.create           -> POST .../role/create
+--   role.update           -> POST .../role/update/{id}
+--   role.delete           -> POST .../role/delete/{id}
+--   role.grantPermission  -> POST .../role/grant-permission/{roleId}
+--   role.revokePermission -> POST .../role/revoke-permission/{roleId}
+--   supplier.read         -> POST .../supplier/get-all | get-by-code | get-by-id | get-by-product-id
+--   supplier.create       -> POST .../supplier/create
+--   supplier.update       -> POST .../supplier/update/{id}
+--   supplier.delete       -> POST .../supplier/delete/{id}
+--   user.read             -> POST .../user/get-all | get-by-id | get-by-email
+--   user.create           -> POST .../user/create
+--   user.update           -> POST .../user/update/{id}
+--   user.delete           -> POST .../user/delete/{id}
+--   user.grantRole        -> POST .../user/grant-role/{userId}
+--   user.revokeRole       -> POST .../user/revoke-role/{userId}
+--   user.grantPermission  -> POST .../user/grant-permission/{userId}
+--   user.revokePermission -> POST .../user/revoke-permission/{userId}
 -- ============================================================
 
+-- ---------------------------------------------------------------------------
+-- Roles (bản ghi trong dbo.Roles; Code do trigger sinh, Name dùng cho AuthorizeRoles)
+--   Administrator  -> toàn quyền nghiệp vụ + cấu hình RBAC (permission/role/user)
+--   Manager        -> vận hành: sản phẩm, đơn, khách, giỏ, đánh giá, nhà cung cấp; chỉ user.read
+--   Customer       -> người mua: xem SP, giỏ hàng, tạo/xem đơn, đăng xuất, xem/tạo đánh giá
+-- ---------------------------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE Name = N'Administrator')
 BEGIN
     INSERT INTO dbo.Roles (Name) VALUES (N'Administrator'), (N'Manager'), (N'Customer');
 END
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.Permissions WHERE Name = N'users.read')
-BEGIN
-    INSERT INTO dbo.Permissions (Name) VALUES
-        (N'users.read'),
-        (N'users.write'),
-        (N'products.read'),
-        (N'orders.manage'),
-        (N'admin.roles');
-END
+INSERT INTO dbo.Permissions (Name)
+SELECT v.Name FROM (VALUES
+    (N'auth.logout'),
+    (N'cart.addItem'), (N'cart.create'), (N'cart.delete'), (N'cart.read'), (N'cart.removeItem'),
+    (N'customer.create'), (N'customer.delete'), (N'customer.read'), (N'customer.update'),
+    (N'order.create'), (N'order.delete'), (N'order.read'), (N'order.update'),
+    (N'permission.create'), (N'permission.delete'), (N'permission.read'), (N'permission.update'),
+    (N'product.create'), (N'product.delete'), (N'product.read'), (N'product.update'),
+    (N'productRating.create'), (N'productRating.delete'), (N'productRating.read'), (N'productRating.update'),
+    (N'role.create'), (N'role.delete'), (N'role.grantPermission'), (N'role.read'), (N'role.revokePermission'), (N'role.update'),
+    (N'supplier.create'), (N'supplier.delete'), (N'supplier.read'), (N'supplier.update'),
+    (N'user.create'), (N'user.delete'), (N'user.grantPermission'), (N'user.grantRole'), (N'user.read'),
+    (N'user.revokePermission'), (N'user.revokeRole'), (N'user.update')
+) AS v(Name)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.Permissions p WHERE p.Name = v.Name);
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.Users WHERE Username = N'admin')
@@ -2634,6 +2692,9 @@ BEGIN
 END
 GO
 
+-- ---------------------------------------------------------------------------
+-- UserRoles: gán user mẫu -> đúng Role (RoleCode/RoleName snapshot). JWT chứa RoleCode.
+-- ---------------------------------------------------------------------------
 IF NOT EXISTS (
     SELECT 1 FROM dbo.UserRoles ur
     INNER JOIN dbo.Users u ON u.Id = ur.UserId AND u.Username = N'admin'
@@ -2670,53 +2731,64 @@ BEGIN
 END
 GO
 
-IF NOT EXISTS (
-    SELECT 1 FROM dbo.RolePermissions rp
-    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Administrator'
-)
-BEGIN
-    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
-    SELECT r.Id, p.Id, p.Code, p.Name
-    FROM dbo.Roles r CROSS JOIN dbo.Permissions p
-    WHERE r.Name = N'Administrator';
-END
+-- ---------------------------------------------------------------------------
+-- RolePermissions: mỗi dòng = (RoleId, PermissionId) + snapshot Code/Name từ Permissions
+-- Chỉ INSERT khi cặp (role, permission) chưa có (an toàn khi chạy lại script).
+-- ---------------------------------------------------------------------------
+
+-- Administrator -> toàn bộ permission trong dbo.Permissions (RBAC + API v2).
+INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+SELECT r.Id, p.Id, p.Code, p.Name
+FROM dbo.Roles r
+CROSS JOIN dbo.Permissions p
+WHERE r.Name = N'Administrator'
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp WHERE rp.RoleId = r.Id AND rp.PermissionId = p.Id);
 GO
 
-IF NOT EXISTS (
-    SELECT 1 FROM dbo.RolePermissions rp
-    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Manager'
-)
-BEGIN
-    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
-    SELECT r.Id, p.Id, p.Code, p.Name
-    FROM dbo.Roles r INNER JOIN dbo.Permissions p ON p.Name IN (N'users.read', N'products.read', N'orders.manage')
-    WHERE r.Name = N'Manager';
-END
+-- Manager -> KHÔNG: permission.*, role.*, user.create/update/delete/grant*/revoke*
+--             CÓ: user.read, auth.logout, product.*, order.*, customer.*, cart.*, productRating.*, supplier.*
+INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+SELECT r.Id, p.Id, p.Code, p.Name
+FROM dbo.Roles r
+INNER JOIN dbo.Permissions p ON p.Name IN (
+    N'user.read',
+    N'auth.logout',
+    N'product.read', N'product.create', N'product.update', N'product.delete',
+    N'order.read', N'order.create', N'order.update', N'order.delete',
+    N'customer.read', N'customer.create', N'customer.update', N'customer.delete',
+    N'cart.create', N'cart.read', N'cart.addItem', N'cart.removeItem', N'cart.delete',
+    N'productRating.read', N'productRating.create', N'productRating.update', N'productRating.delete',
+    N'supplier.read', N'supplier.create', N'supplier.update', N'supplier.delete')
+WHERE r.Name = N'Manager'
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp WHERE rp.RoleId = r.Id AND rp.PermissionId = p.Id);
 GO
 
-IF NOT EXISTS (
-    SELECT 1 FROM dbo.RolePermissions rp
-    INNER JOIN dbo.Roles r ON r.Id = rp.RoleId AND r.Name = N'Customer'
-)
-BEGIN
-    INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
-    SELECT r.Id, p.Id, p.Code, p.Name
-    FROM dbo.Roles r INNER JOIN dbo.Permissions p ON p.Name = N'products.read'
-    WHERE r.Name = N'Customer';
-END
+-- Customer -> luồng khách: SP, giỏ, đặt/xem đơn, đăng xuất, xem/tạo rating
+--             KHÔNG: RBAC, CRM customer, supplier, sửa/xóa đơn hộ người khác, ...
+INSERT INTO dbo.RolePermissions (RoleId, PermissionId, PermissionCode, PermissionName)
+SELECT r.Id, p.Id, p.Code, p.Name
+FROM dbo.Roles r
+INNER JOIN dbo.Permissions p ON p.Name IN (
+    N'auth.logout',
+    N'product.read',
+    N'cart.create', N'cart.read', N'cart.addItem', N'cart.removeItem', N'cart.delete',
+    N'order.read', N'order.create',
+    N'productRating.read', N'productRating.create')
+WHERE r.Name = N'Customer'
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.RolePermissions rp WHERE rp.RoleId = r.Id AND rp.PermissionId = p.Id);
 GO
 
-IF NOT EXISTS (
-    SELECT 1 FROM dbo.UserPermissions up
-    INNER JOIN dbo.Users u ON u.Id = up.UserId AND u.Username = N'demo'
-    INNER JOIN dbo.Permissions p ON p.Id = up.PermissionId AND p.Name = N'users.write'
-)
-BEGIN
-    INSERT INTO dbo.UserPermissions (UserId, PermissionId, PermissionCode, PermissionName)
-    SELECT u.Id, p.Id, p.Code, p.Name
-    FROM dbo.Users u CROSS JOIN dbo.Permissions p
-    WHERE u.Username = N'demo' AND p.Name = N'users.write';
-END
+INSERT INTO dbo.UserPermissions (UserId, PermissionId, PermissionCode, PermissionName)
+SELECT u.Id, p.Id, p.Code, p.Name
+FROM dbo.Users u
+CROSS JOIN dbo.Permissions p
+WHERE u.Username = N'demo'
+  AND p.Name IN (N'product.create', N'product.update', N'product.delete')
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.UserPermissions up WHERE up.UserId = u.Id AND up.PermissionId = p.Id);
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.UserToken WHERE RefreshToken = N'seed-refresh-token-admin-001')

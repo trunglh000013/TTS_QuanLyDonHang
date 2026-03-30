@@ -9,6 +9,7 @@ using ProductTest.Application.Features.v2.Auth.Commands.Login;
 using ProductTest.Application.Features.v2.Auth.Commands.Logout;
 using ProductTest.Application.Features.v2.Auth.Commands.RefreshToken;
 using ProductTest.Application.Features.v2.Auth.Commands.Register;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2
@@ -22,6 +23,7 @@ namespace ProductTest.Presentation.Controllers.v2
     public sealed class AuthController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
     {
         [HttpPost("login")]
+        [AllowAnonymous]
         public async Task<IActionResult> LoginUser([FromBody] LoginRequest request, CancellationToken cancellationToken)
         {
             var response = await mediator.Send(new LoginCommand(request), cancellationToken);
@@ -29,6 +31,7 @@ namespace ProductTest.Presentation.Controllers.v2
         }
 
         [HttpPost("register")]
+        [AllowAnonymous]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
         {
             var response = await mediator.Send(new RegisterCommand(request), cancellationToken);
@@ -37,6 +40,7 @@ namespace ProductTest.Presentation.Controllers.v2
 
         [HttpPost("logout")]
         [Authorize]
+        [AuthorizePermissions("auth.logout")]
         public async Task<IActionResult> Logout([FromBody] LogoutRequest request, CancellationToken cancellationToken)
         {
             var response = await mediator.Send(new LogoutCommand(request), cancellationToken);
@@ -44,7 +48,7 @@ namespace ProductTest.Presentation.Controllers.v2
         }
 
         [HttpPost("refresh-token")]
-        [Authorize]
+        [AllowAnonymous]
         public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenRequest request, CancellationToken cancellationToken)
         {
             var response = await mediator.Send(new RefreshTokenCommand(request), cancellationToken);

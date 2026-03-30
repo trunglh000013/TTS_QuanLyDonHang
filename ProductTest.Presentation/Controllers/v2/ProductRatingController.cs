@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.Features.v2.ProductRatings.Commands.CreateProductRating;
@@ -10,16 +11,19 @@ using ProductTest.Application.DTOs.Request.ProductRating;
 using ProductTest.Application.Features.v2.ProductRatings.Queries.GetProductRatingByProductId;
 using ProductTest.Application.DTOs;
 using ProductTest.Application.DTOs.Response.ProductRating;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
 [Route("api/v{version:apiVersion}/product-rating")]
 public sealed class ProductRatingController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
 {
     [HttpPost("create")]
+    [AuthorizePermissions("productRating.create")]
     public async Task<IActionResult> Create([FromBody] CreateProductRatingRequest request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new CreateProductRatingCommand(request), cancellationToken);
@@ -27,6 +31,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("productRating.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new DeleteProductRatingCommand(new DeleteProductRatingRequest { Id = id }), cancellationToken);
@@ -34,6 +39,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("productRating.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateProductRatingBody request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new UpdateProductRatingCommand(new UpdateProductRatingRequest { Id = id, Body = request }), cancellationToken);
@@ -41,6 +47,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("get-all")]
+    [AuthorizePermissions("productRating.read")]
     public async Task<IActionResult> GetAll(
         [FromBody] GetAllProductRatingRequest request, CancellationToken cancellationToken)
     {
@@ -49,6 +56,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("get-by-code/{code}")]
+    [AuthorizePermissions("productRating.read")]
     public async Task<IActionResult> GetByCode(
         [FromRoute] string code, CancellationToken cancellationToken)
     {
@@ -57,6 +65,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("productRating.read")]
     public async Task<IActionResult> GetById(
         [FromRoute] string id, CancellationToken cancellationToken)
     {
@@ -65,6 +74,7 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
     }
 
     [HttpPost("get-by-product-id/{productId}")]
+    [AuthorizePermissions("productRating.read")]
     public async Task<IActionResult> GetByProductId(
         [FromRoute] string productId, CancellationToken cancellationToken)
     {
@@ -72,4 +82,3 @@ public sealed class ProductRatingController(IMediator mediator, IStringLocalizer
         return Ok(BaseApiResponse<GetProductRatingByProductIdResponse>.SuccessResult(result, localizer["OperationCompletedSuccessfully"]));
     }
 }
-

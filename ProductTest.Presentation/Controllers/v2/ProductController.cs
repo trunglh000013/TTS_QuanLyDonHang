@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.Features.v2.Products.Commands.CreateProduct;
@@ -12,15 +13,19 @@ using ProductTest.Presentation.Resources;
 using ProductTest.Application.DTOs.Request.Product;
 using ProductTest.Application.DTOs;
 using ProductTest.Application.DTOs.Response.Product;
+using ProductTest.Presentation.Authorization.Attributes;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
 [Route("api/v{version:apiVersion}/product")]
 public sealed class ProductController(IMediator mediator, IStringLocalizer<SharedResource> localizer, ILogger<ProductController> logger) : ControllerBase
 {
     [HttpPost("create")]
+    [AuthorizeRoles("Administrator", "Manager")]
+    [AuthorizePermissions("product.create")]
     public async Task<IActionResult> Create(
         [FromBody] CreateProductRequest request,
         CancellationToken cancellationToken)
@@ -38,6 +43,7 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("get-all")]
+    [AuthorizePermissions("product.read")]
     public async Task<IActionResult> GetAll(
         GetAllProductRequest request,
         CancellationToken cancellationToken)
@@ -55,6 +61,7 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("product.read")]
     public async Task<IActionResult> GetById(
         [FromRoute] string id,
         CancellationToken cancellationToken)
@@ -74,6 +81,8 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizeRoles("Administrator", "Manager")]
+    [AuthorizePermissions("product.update")]
     public async Task<IActionResult> Update(
         [FromRoute] string id,
         [FromBody] UpdateProductBody request,
@@ -94,6 +103,8 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizeRoles("Administrator", "Manager")]
+    [AuthorizePermissions("product.delete")]
     public async Task<IActionResult> Delete(
         [FromRoute] string id,
         CancellationToken cancellationToken)
@@ -113,6 +124,7 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("search")]
+    [AuthorizePermissions("product.read")]
     public async Task<IActionResult> Search(
         [FromBody] SearchProductRequest request,
         CancellationToken cancellationToken)
@@ -131,6 +143,7 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
     }
 
     [HttpPost("filter")]
+    [AuthorizePermissions("product.read")]
     public async Task<IActionResult> Filter(
         [FromBody] FilterProductRequest request,
         CancellationToken cancellationToken)

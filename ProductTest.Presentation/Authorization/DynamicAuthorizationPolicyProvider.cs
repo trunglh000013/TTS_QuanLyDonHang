@@ -21,7 +21,7 @@ public class DynamicAuthorizationPolicyProvider : DefaultAuthorizationPolicyProv
         }
 
         // Parse policy format: "type:value1,value2,value3"
-        // Examples: "roles:Admin,User" or "permission:users.create,users.update"
+        // Examples: "roles:Admin,User" or "permissions:users.create,users.update"
         var separatorIndex = policyName.IndexOf(':');
         if (separatorIndex <= 0 || separatorIndex >= policyName.Length - 1)
         {
@@ -40,7 +40,6 @@ public class DynamicAuthorizationPolicyProvider : DefaultAuthorizationPolicyProv
             case "roles":
                 policyBuilder.AddRequirements(new RoleRequirement(values));
                 break;
-            case "permission":
             case "permissions":
                 policyBuilder.AddRequirements(new PermissionRequirement(values));
                 break;

@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Localization;
 using ProductTest.Application.DTOs;
@@ -10,16 +11,19 @@ using ProductTest.Application.Features.v2.Customers.Commands.UpdateCustomer;
 using ProductTest.Application.Features.v2.Customers.Queries.GetAllCustomers;
 using ProductTest.Application.Features.v2.Customers.Queries.GetCustomerByCode;
 using ProductTest.Application.Features.v2.Customers.Queries.GetCustomerById;
+using ProductTest.Presentation.Authorization.Attributes;
 using ProductTest.Presentation.Resources;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
+[Authorize]
 [Route("api/v{version:apiVersion}/customer")]
 public sealed class CustomerController(IMediator mediator, IStringLocalizer<SharedResource> localizer) : ControllerBase
 {
     [HttpPost("create")]
+    [AuthorizePermissions("customer.create")]
     public async Task<IActionResult> Create([FromBody] CreateCustomerRequest request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new CreateCustomerCommand(request), cancellationToken);
@@ -27,6 +31,7 @@ public sealed class CustomerController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("delete/{id}")]
+    [AuthorizePermissions("customer.delete")]
     public async Task<IActionResult> Delete([FromRoute] string id, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new DeleteCustomerCommand(new DeleteCustomerRequest { Id = id }), cancellationToken);
@@ -34,6 +39,7 @@ public sealed class CustomerController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("update/{id}")]
+    [AuthorizePermissions("customer.update")]
     public async Task<IActionResult> Update([FromRoute] string id, [FromBody] UpdateCustomerBody request, CancellationToken cancellationToken)
     {
         var result = await mediator.Send(new UpdateCustomerCommand(new UpdateCustomerRequest { Id = id, Body = request }), cancellationToken);
@@ -41,6 +47,7 @@ public sealed class CustomerController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-all")]
+    [AuthorizePermissions("customer.read")]
     public async Task<IActionResult> GetAll(
         [FromBody] GetAllCustomerRequest request, CancellationToken cancellationToken)
     {
@@ -49,6 +56,7 @@ public sealed class CustomerController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-by-code/{code}")]
+    [AuthorizePermissions("customer.read")]
     public async Task<IActionResult> GetByCode(
         [FromRoute] string code, CancellationToken cancellationToken)
     {
@@ -57,6 +65,7 @@ public sealed class CustomerController(IMediator mediator, IStringLocalizer<Shar
     }
 
     [HttpPost("get-by-id/{id}")]
+    [AuthorizePermissions("customer.read")]
     public async Task<IActionResult> GetById(
         [FromRoute] string id, CancellationToken cancellationToken)
     {

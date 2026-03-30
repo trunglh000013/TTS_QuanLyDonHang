@@ -8,11 +8,17 @@ using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.AspNetCore.Mvc.Versioning;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
+using Microsoft.OpenApi.Models;
 using ProductTest.Application;
 using ProductTest.Infrastructure;
 using ProductTest.Infrastructure.Persistence;
+using ProductTest.Presentation.Authorization;
+using ProductTest.Presentation.Authorization.Permission;
+using ProductTest.Presentation.Authorization.Role;
 using ProductTest.Presentation.Middleware;
 using Serilog;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,6 +26,8 @@ builder.Host.UseSerilog((context, services, configuration) =>
 {
     configuration.ReadFrom.Configuration(context.Configuration);
 });
+
+builder.Logging.ClearProviders();
 
 builder.Services.AddApiVersioning(options =>
 {
@@ -44,6 +52,11 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, DynamicAuthorizationPolicyProvider>();
+builder.Services.AddScoped<IAuthorizationHandler, RoleRequirementHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, PermissionRequirementHandler>();
+builder.Services.AddTransient<IConfigureOptions<SwaggerGenOptions>, ConfigureSwaggerOptions>();
+builder.Services.Configure<RequestLoggingOptions>(builder.Configuration.GetSection("RequestLogging"));
 
 var supportedCultures = new[]
 {
@@ -76,18 +89,6 @@ builder.Services.AddSwaggerGen(options =>
     if (File.Exists(xmlPath))
     {
         options.IncludeXmlComments(xmlPath);
-    }
-
-    var provider = builder.Services.BuildServiceProvider()
-        .GetRequiredService<IApiVersionDescriptionProvider>();
-
-    foreach (var description in provider.ApiVersionDescriptions)
-    {
-        options.SwaggerDoc(description.GroupName, new Microsoft.OpenApi.Models.OpenApiInfo
-        {
-            Title = $"Product Test API {description.ApiVersion}",
-            Version = description.ApiVersion.ToString()
-        });
     }
 
     // Add JWT Bearer authentication to Swagger
@@ -213,3 +214,25 @@ app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 app.MapControllers();
 
 app.Run();
+
+public class ConfigureSwaggerOptions : IConfigureOptions<SwaggerGenOptions>
+{
+    private readonly IApiVersionDescriptionProvider _provider;
+
+    public ConfigureSwaggerOptions(IApiVersionDescriptionProvider provider)
+    {
+        _provider = provider;
+    }
+
+    public void Configure(SwaggerGenOptions options)
+    {
+        foreach (var description in _provider.ApiVersionDescriptions)
+        {
+            options.SwaggerDoc(description.GroupName, new OpenApiInfo
+            {
+                Title = $"Product Test API {description.ApiVersion}",
+                Version = description.ApiVersion.ToString()
+            });
+        }
+    }
+}

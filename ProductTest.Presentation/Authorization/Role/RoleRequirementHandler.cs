@@ -32,36 +32,50 @@ public class RoleRequirementHandler : AuthorizationHandler<RoleRequirement>
             return;
         }
 
-        var response = await _mediator.Send(
+        var userRoles = await _mediator.Send(
             new GetUserRolesByUserIdQuery(new GetUserRolesByUserIdRequest { UserId = userIdClaim }),
             CancellationToken.None);
 
-        var userRoleCodes = response.Items
-            .Select(x => x.RoleCode)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var userRoleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in userRoles.Items)
+        {
+            AddIfPresent(userRoleNames, item.RoleName);
+        }
 
-        if (userRoleCodes.Count == 0)
+        if (userRoleNames.Count == 0)
+        {
+            _logger.LogWarning("No permissions found for user: {UserId}", userIdClaim);
+            return;
+        }
+
+        if (userRoleNames.Count == 0)
         {
             _logger.LogWarning("No roles found for user: {UserId}", userIdClaim);
             return;
         }
 
-        // Check if user has any of the required roles
-        var hasRequiredRole = requirement.AllowedRoles.Any(allowedRole =>
-            userRoleCodes.Contains(allowedRole, StringComparer.OrdinalIgnoreCase));
+        var hasRequiredRole = requirement.AllowedRoles.Any(required =>
+            userRoleNames.Contains(required));
 
         if (hasRequiredRole)
         {
-            _logger.LogDebug("User {UserId} has required role. Roles: {UserRoles}, Required: {RequiredRoles}",
-                userIdClaim, string.Join(", ", userRoleCodes), string.Join(", ", requirement.AllowedRoles));
+            _logger.LogDebug(
+                "User {UserId} has required role. Roles: {UserRoles}, Required: {RequiredRoles}",
+                userIdClaim, string.Join(", ", userRoleNames), string.Join(", ", requirement.AllowedRoles));
             context.Succeed(requirement);
         }
         else
         {
-            _logger.LogWarning("User {UserId} does not have required role. User roles: {UserRoles}, Required: {RequiredRoles}",
-                userIdClaim, string.Join(", ", userRoleCodes), string.Join(", ", requirement.AllowedRoles));
+            _logger.LogWarning(
+                "User {UserId} does not have required role. User roles: {UserRoles}, Required: {RequiredRoles}",
+                userIdClaim, string.Join(", ", userRoleNames), string.Join(", ", requirement.AllowedRoles));
         }
+
+    }
+
+    private static void AddIfPresent(HashSet<string> set, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            set.Add(value.Trim());
     }
 }
