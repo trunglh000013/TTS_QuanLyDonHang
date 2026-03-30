@@ -30,6 +30,8 @@ using ProductTest.Infrastructure.Repositories.UserRoleRepository;
 using ProductTest.Infrastructure.Repositories.RolePermissionRepository;
 using ProductTest.Infrastructure.Repositories.UserPermissionRepository;
 using ProductTest.Infrastructure.Repositories.UserTokenRepository;
+using ProductTest.Application.Abstractions.DocumentAbstractions;
+using ProductTest.Infrastructure.Documents.AsposeIntegration;
 
 namespace ProductTest.Infrastructure;
 
@@ -58,6 +60,7 @@ public static class DependencyInjection
         services.AddScoped<IUserPermissionRepositoryV2, UserPermissionRepositoryV2>();
         services.AddScoped<IUserTokenRepositoryV2, UserTokenRepositoryV2>();
         services.AddScoped<IStoreProcedureRunner, StoreProcedureRunner>();
+        services.AddScoped<IDocumentConversionService, AsposeWordsDocumentConversionService>();
 
         return services;
     }
