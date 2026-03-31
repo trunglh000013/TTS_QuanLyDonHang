@@ -39,11 +39,11 @@ public class PermissionRequirementHandler : AuthorizationHandler<PermissionRequi
             new GetUserPermissionsByUserIdQuery(new GetUserPermissionsByUserIdRequest { UserId = userIdClaim }),
             CancellationToken.None);
 
-        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var item in direct.Items)
-        {
-            AddIfPresent(identifiers, item.PermissionName);
-        }
+        var permissionName = direct.Items.FirstOrDefault()?.PermissionName;
+        _logger.LogInformation("User {UserId} has permissions: {PermissionName}", userIdClaim, permissionName);
+
+        var identifiers = new HashSet<string>(direct.Items.Select(item => item.PermissionName));
+        _logger.LogInformation("User {UserId} has permissions: {PermissionName}", userIdClaim, string.Join(", ", identifiers));
 
         if (identifiers.Count == 0)
         {

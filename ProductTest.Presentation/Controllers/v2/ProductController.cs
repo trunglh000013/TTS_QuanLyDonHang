@@ -14,12 +14,12 @@ using ProductTest.Application.DTOs.Request.Product;
 using ProductTest.Application.DTOs;
 using ProductTest.Application.DTOs.Response.Product;
 using ProductTest.Presentation.Authorization.Attributes;
+using ProductTest.Application.Features.v2.Products.Queries.GetAllProductExportXlsx;
 
 namespace ProductTest.Presentation.Controllers.v2;
 
 [ApiController]
 [ApiVersion("2.0")]
-[Authorize]
 [Route("api/v{version:apiVersion}/product")]
 public sealed class ProductController(IMediator mediator, IStringLocalizer<SharedResource> localizer, ILogger<ProductController> logger) : ControllerBase
 {
@@ -173,5 +173,22 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
             cancellationToken);
 
         return Ok(BaseApiResponse<FilterProductResponse>.SuccessResult(products, localizer["OperationCompletedSuccessfully"]));
+    }
+
+    [HttpPost("export")]
+    //[AuthorizePermissions("product.read")]
+    public async Task<IActionResult> ExportProduct([FromBody] ExportProductRequest request, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Export product request received.");
+
+        var response = await mediator.Send(new ExportProductQuery(new ExportProductRequest()), cancellationToken);
+        return Ok(BaseApiResponse<PhysicalFileResult>.SuccessResult(
+                PhysicalFile(
+                    response.FilePath,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    Path.GetFileName(response.FilePath)
+                ), localizer["OperationCompletedSuccessfully"]
+            )
+        );
     }
 }
