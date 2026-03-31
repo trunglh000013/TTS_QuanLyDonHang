@@ -1,6 +1,5 @@
-using System.Threading;
-using System.Threading.Tasks;
-using ProductTest.Domain.Entities;
+using ProductTest.Application.DTOs.Response.Report;
+using ProductTest.Application.DTOs.Request.Report;
 
 namespace ProductTest.Application.Abstractions.ProductAbstractions;
 
@@ -9,8 +8,8 @@ public interface IProductDocument
     /// <summary>
     /// Gets all product data and exports them to an XLSX document.
     /// </summary>
-    /// <param name="data">The product data to export.</param>
+    /// <param name="request">The request to export the product.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The file path of the generated XLSX document.</returns>
-    Task<string> ExportProductAsync(List<Product> data, CancellationToken cancellationToken);
+    /// <returns>The response containing the file name, content, and token.</returns>
+    Task<ReportResponse> ExportProductAsync(ReportRequest request, CancellationToken cancellationToken);
 }

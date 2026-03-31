@@ -124,6 +124,78 @@ namespace ProductTest.Infrastructure.Common
         }
 
         /// <summary>
+        /// Executes a stored procedure and returns the result as a DataSet.
+        /// </summary>
+        public async Task<DataSet> ExecuteProcedureToDataSetAsync(
+            string storeProcedureName,
+            object parameters,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrWhiteSpace(storeProcedureName))
+                throw new ArgumentException("Stored procedure name cannot be null or empty.", nameof(storeProcedureName));
+
+            var paramProps = parameters?.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance) ?? Array.Empty<PropertyInfo>();
+            var paramAssignment = paramProps.Length > 0
+                ? string.Join(", ", paramProps.Select(p => $"{p.Name} = {p.GetValue(parameters)}"))
+                : "";
+            _logger.LogInformation("Executing stored procedure {StoreProcedureName} with params: {Params}",
+                storeProcedureName,
+                paramAssignment);
+
+            var connectionString = _dbContext.Database.GetConnectionString();
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new InvalidOperationException("Connection string 'DefaultConnection' was not found.");
+
+            using var connection = new SqlConnection(connectionString);
+            await connection.OpenAsync(cancellationToken);
+
+            var sqlParameters = await GetSqlParametersFromProcedure(storeProcedureName);
+
+            var dynamicParams = ObjectFlattener.ToDynamicParameters(parameters);
+
+            using var command = new SqlCommand(storeProcedureName, connection)
+            {
+                CommandType = CommandType.StoredProcedure
+            };
+
+            foreach (var p in sqlParameters)
+            {
+                var name = p.ParameterName.TrimStart('@');
+                object? rawValue = null;
+
+                // Map DTO request (dynamicParams) value to matching SQL param name
+                if (dynamicParams != null && dynamicParams.ParameterNames.Contains(name))
+                {
+                    rawValue = dynamicParams.Get<object>(name);
+                }
+
+                var convertedValue = SqlParameterValueConverter.Convert(rawValue, p);
+
+                var sqlParam = new SqlParameter("@" + name, p.SqlDbType)
+                {
+                    Value = rawValue is null ? DBNull.Value : convertedValue,
+                    Direction = p.Direction,
+                    Size = p.Size
+                };
+
+                command.Parameters.Add(sqlParam);
+            }
+
+            var dataSet = new DataSet();
+            using (var adapter = new SqlDataAdapter(command))
+            {
+                adapter.Fill(dataSet);
+            }
+
+            _logger.LogInformation("Stored procedure {StoreProcedureName} executed successfully. Returned {TableCount} tables with {RowsCount} rows in first table.",
+                storeProcedureName,
+                dataSet.Tables.Count,
+                dataSet.Tables.Count > 0 ? dataSet.Tables[0].Rows.Count : 0);
+
+            return dataSet;
+        }
+
+        /// <summary>
         /// Executes a stored procedure that does not return entities (for INSERT/UPDATE/DELETE) using Dapper.
         /// </summary>
         public async Task<int> ExecuteNonQueryAsync(

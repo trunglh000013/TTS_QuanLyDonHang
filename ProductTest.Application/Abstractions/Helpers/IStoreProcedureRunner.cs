@@ -1,3 +1,5 @@
+using System.Data;
+
 namespace ProductTest.Application.Abstractions.Helpers
 {
     /// <summary>
@@ -18,6 +20,19 @@ namespace ProductTest.Application.Abstractions.Helpers
             object parameters,
             CancellationToken cancellationToken = default
         ) where TResult : class;
+
+        /// <summary>
+        /// Executes a stored procedure and returns the result as a DataSet.
+        /// </summary>
+        /// <param name="storeProcedureName">The name of the stored procedure to execute. Can include or omit schema ('dbo.').</param>
+        /// <param name="parameters">Object (typically a DTO or anonymous type) whose properties are mapped to SQL parameters.</param>
+        /// <param name="cancellationToken">An optional <see cref="CancellationToken"/> to observe while waiting for the task to complete.</param>
+        /// <returns>A DataSet containing the result of the stored procedure.</returns>
+        Task<DataSet> ExecuteProcedureToDataSetAsync(
+            string storeProcedureName,
+            object parameters,
+            CancellationToken cancellationToken = default
+        );
 
         /// <summary>
         /// Executes a stored procedure that does not return any entities (typically for INSERT, UPDATE, or DELETE operations).

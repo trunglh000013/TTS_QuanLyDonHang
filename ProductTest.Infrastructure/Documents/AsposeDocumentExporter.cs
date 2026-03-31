@@ -1,45 +1,65 @@
+using System.Data;
 using Aspose.Cells;
 using ProductTest.Application.Abstractions.Helpers;
+using ProductTest.Application.DTOs.Request.Report;
 using ProductTest.Infrastructure.Documents;
+using ProductTest.Application.DTOs.Response.Report;
+using Microsoft.Extensions.Caching.Memory;
+using ProductTest.Application.DTOs;
+using Microsoft.Extensions.Logging;
 
-public class AsposeDocumentExporter : IDocumentExporter
+public class AsposeDocumentExporter(ILogger<AsposeDocumentExporter> logger, IMemoryCache memoryCache) : IDocumentExporter
 {
-    public async Task<string> ExportToXlsxAsync<T>(
-        IEnumerable<T> data,
-        string templatePath,
-        string outputDirectory,
-        Action<IExcelRowWriter, T, int> mapRow,
+    public async Task<ReportResponse> ExportToXlsxAsync(
+        ReportRequest request,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(request);
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!File.Exists(templatePath))
-            throw new FileNotFoundException($"Template file not found at {templatePath}");
+        if (!File.Exists(request.TemplateFilePath))
+            throw new FileNotFoundException($"Template file not found at {request.TemplateFilePath}");
 
-        if (!Directory.Exists(outputDirectory))
-            Directory.CreateDirectory(outputDirectory);
-
-        var fileName = $"export-{typeof(T).Name}-{DateTime.Now:dd-MM-yyyy_HH-mm-ss}.xlsx";
-        var filePath = Path.Combine(outputDirectory, fileName);
-
-        var workbook = new Workbook(templatePath);
-        var worksheet = workbook.Worksheets[0];
-
-        int row = 1;
-
-        var writer = new AsposeExcelRowWriter(worksheet);
-
-        foreach (var item in data)
+        Workbook workbook = new Workbook(request.TemplateFilePath);
+        WorkbookDesigner designWord = new WorkbookDesigner(workbook);
+        foreach (DataTable table in request.Data.Tables)
         {
-            mapRow(writer, item, row);
-            row++;
+            logger.LogInformation("Exporting table: {TableName} with {RowCount} rows", table.TableName, table.Rows.Count);
+            designWord.SetDataSource(table.TableName, table);
         }
+        designWord.SetDataSource(request.Data);
+        designWord.Process(false);
+        designWord.Workbook.FileName = request.FileName;
+        designWord.Workbook.FileFormat = FileFormatType.Xlsx;
+        designWord.Workbook.Settings.FormulaSettings.CalculationMode = CalcModeType.Automatic;
+        designWord.Workbook.Settings.FormulaSettings.CalculateOnSave = true;
+        designWord.Workbook.Settings.FormulaSettings.CalculateOnOpen = true;
+        designWord.Workbook.Settings.CheckCustomNumberFormat = true;
+        designWord.Workbook.Worksheets[0].AutoFitRows();
 
-        worksheet.AutoFitColumns();
-        workbook.Save(filePath, SaveFormat.Xlsx);
+        using var memoryStream = new MemoryStream();
+        designWord.Workbook.Save(memoryStream, SaveFormat.Xlsx);
+        var bytes = memoryStream.ToArray();
 
-        return filePath;
+        var fileToken = Guid.NewGuid().ToString();
+        memoryCache.Set(
+            fileToken,
+            new CachedFile
+            {
+                Content = bytes,
+                FileName = request.FileName,
+                ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
+            TimeSpan.FromMinutes(10)
+        );
+
+        logger.LogInformation("File exported successfully and cached with key: {FileToken}, file name: {FileName}, file size: {FileSize}", fileToken, request.FileName, bytes.Length);
+
+        return new ReportResponse
+        {
+            FileName = request.FileName,
+            FileToken = fileToken
+        };
     }
 }

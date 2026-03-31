@@ -6,6 +6,7 @@ using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Common.Mapping;
 using AutoMapper;
 using ProductTest.Infrastructure.Common.StoreProcedureNameEnum;
+using System.Data;
 
 namespace ProductTest.Infrastructure.Repositories.ProductRepository;
 
@@ -100,6 +101,25 @@ public sealed class ProductRepositoryV2(
             cancellationToken);
         logger.LogInformation("GetAll returned {Count} products", products.Count);
         return products;
+    }
+
+    public async Task<DataSet> GetAllToDataSetAsync(
+        GetAllProductRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        logger.LogInformation(
+            "Fetching all products (paged) via stored procedure {StoredProcedure}, page {PageNumber}, page size {PageSize}",
+            StoreProcedureProductEnum.Filter.ToProcedureString(),
+            request.PageNumber,
+            request.PageSize);
+
+        var dataSet = await _spRunner.ExecuteProcedureToDataSetAsync(
+            StoreProcedureProductEnum.Filter.ToProcedureString(),
+            request,
+            cancellationToken);
+        logger.LogInformation("GetAll returned {Count} products", dataSet.Tables[0].Rows.Count);
+        dataSet.Tables[0].TableName = "Product";
+        return dataSet;
     }
 
     public async Task<List<Product>> SearchAsync(

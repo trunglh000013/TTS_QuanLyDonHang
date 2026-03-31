@@ -57,6 +57,7 @@ builder.Services.AddScoped<IAuthorizationHandler, RoleRequirementHandler>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionRequirementHandler>();
 builder.Services.AddTransient<IConfigureOptions<SwaggerGenOptions>, ConfigureSwaggerOptions>();
 builder.Services.Configure<RequestLoggingOptions>(builder.Configuration.GetSection("RequestLogging"));
+builder.Services.AddMemoryCache();
 
 var supportedCultures = new[]
 {

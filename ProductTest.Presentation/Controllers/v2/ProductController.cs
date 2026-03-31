@@ -182,13 +182,9 @@ public sealed class ProductController(IMediator mediator, IStringLocalizer<Share
         logger.LogInformation("Export product request received.");
 
         var response = await mediator.Send(new ExportProductQuery(new ExportProductRequest()), cancellationToken);
-        return Ok(BaseApiResponse<PhysicalFileResult>.SuccessResult(
-                PhysicalFile(
-                    response.FilePath,
-                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    Path.GetFileName(response.FilePath)
-                ), localizer["OperationCompletedSuccessfully"]
-            )
-        );
+        return Ok(BaseApiResponse<ExportProductResponse>.SuccessResult(
+            response,
+            localizer["OperationCompletedSuccessfully"]
+        ));
     }
 }
