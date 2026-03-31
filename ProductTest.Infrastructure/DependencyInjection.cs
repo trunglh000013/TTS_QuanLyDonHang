@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Abstractions.CartAbstractions;
 using ProductTest.Application.Abstractions.OrderAbstractions;
 using ProductTest.Application.Abstractions.CustomerAbstractions;
@@ -30,8 +30,7 @@ using ProductTest.Infrastructure.Repositories.UserRoleRepository;
 using ProductTest.Infrastructure.Repositories.RolePermissionRepository;
 using ProductTest.Infrastructure.Repositories.UserPermissionRepository;
 using ProductTest.Infrastructure.Repositories.UserTokenRepository;
-using ProductTest.Application.Abstractions.DocumentAbstractions;
-using ProductTest.Infrastructure.Documents.AsposeIntegration;
+using ProductTest.Infrastructure.Documents;
 
 namespace ProductTest.Infrastructure;
 
@@ -60,7 +59,8 @@ public static class DependencyInjection
         services.AddScoped<IUserPermissionRepositoryV2, UserPermissionRepositoryV2>();
         services.AddScoped<IUserTokenRepositoryV2, UserTokenRepositoryV2>();
         services.AddScoped<IStoreProcedureRunner, StoreProcedureRunner>();
-        services.AddScoped<IDocumentConversionService, AsposeWordsDocumentConversionService>();
+        services.AddScoped<IProductDocument, ProductDocument>();
+        services.AddScoped<IDocumentExporter, AsposeDocumentExporter>();
 
         return services;
     }

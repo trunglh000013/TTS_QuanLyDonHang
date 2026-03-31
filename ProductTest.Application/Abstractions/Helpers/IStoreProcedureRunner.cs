@@ -1,4 +1,4 @@
-namespace ProductTest.Application.Abstractions
+namespace ProductTest.Application.Abstractions.Helpers
 {
     /// <summary>
     /// General-purpose interface for executing stored procedures against a database.

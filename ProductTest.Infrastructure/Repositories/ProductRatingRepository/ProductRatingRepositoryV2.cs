@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Abstractions.ProductRatingAbstractions;
 using ProductTest.Application.DTOs.Request.ProductRating;
 using ProductTest.Domain.Entities;

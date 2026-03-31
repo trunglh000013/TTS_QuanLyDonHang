@@ -1,9 +1,7 @@
-using AutoMapper;
 using Microsoft.Extensions.Logging;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Abstractions.SupplierAbstractions;
 using ProductTest.Application.DTOs.Request.Supplier;
-using ProductTest.Application.DTOs.Response.Supplier;
 using ProductTest.Domain.Entities;
 using ProductTest.Infrastructure.Common.StoreProcedureNameEnum;
 

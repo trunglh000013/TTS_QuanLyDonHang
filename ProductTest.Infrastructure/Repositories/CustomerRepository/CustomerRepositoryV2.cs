@@ -1,6 +1,6 @@
 
 using Microsoft.Extensions.Logging;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Abstractions.CustomerAbstractions;
 using ProductTest.Application.DTOs.Request.Customer;
 using ProductTest.Domain.Entities;

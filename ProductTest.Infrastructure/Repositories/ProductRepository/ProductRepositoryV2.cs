@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using ProductTest.Application.DTOs.Request.Product;
 using ProductTest.Application.Abstractions.ProductAbstractions;
 using ProductTest.Domain.Entities;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Application.Common.Mapping;
 using AutoMapper;
 using ProductTest.Infrastructure.Common.StoreProcedureNameEnum;

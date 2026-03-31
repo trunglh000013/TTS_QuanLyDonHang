@@ -22,17 +22,11 @@ public sealed class UserRbacMappingProfile : Profile
 
         CreateMap<Permission, PermissionDto>();
 
-        CreateMap<UserRole, UserRoleDto>()
-            .ForMember(d => d.RoleCode, o => o.MapFrom(s => s.Role != null ? s.Role.Code : string.Empty))
-            .ForMember(d => d.RoleName, o => o.MapFrom(s => s.Role != null ? s.Role.Name : string.Empty));
+        CreateMap<UserRole, UserRoleDto>();
 
-        CreateMap<UserPermission, UserPermissionDto>()
-            .ForMember(d => d.PermissionCode, o => o.MapFrom(s => s.Permission != null ? s.Permission.Code : string.Empty))
-            .ForMember(d => d.PermissionName, o => o.MapFrom(s => s.Permission != null ? s.Permission.Name : string.Empty));
+        CreateMap<UserPermission, UserPermissionDto>();
 
-        CreateMap<RolePermission, RolePermissionDto>()
-            .ForMember(d => d.PermissionCode, o => o.MapFrom(s => s.Permission != null ? s.Permission.Code : string.Empty))
-            .ForMember(d => d.PermissionName, o => o.MapFrom(s => s.Permission != null ? s.Permission.Name : string.Empty));
+        CreateMap<RolePermission, RolePermissionDto>();
 
         CreateMap<UserToken, UserTokenDto>();
 

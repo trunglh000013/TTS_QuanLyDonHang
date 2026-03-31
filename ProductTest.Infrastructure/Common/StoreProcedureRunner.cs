@@ -2,7 +2,7 @@ using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using ProductTest.Application.Abstractions;
+using ProductTest.Application.Abstractions.Helpers;
 using ProductTest.Infrastructure.Persistence;
 using System.Collections;
 using System.Data;
@@ -97,9 +97,17 @@ namespace ProductTest.Infrastructure.Common
             foreach (var p in sqlParameters)
             {
                 var name = p.ParameterName.TrimStart('@');
-                var rawValue = dynamicParams.Get<object>(name);
+                object? rawValue = null;
+
+                // Map DTO request (dynamicParams) value to matching SQL param name
+                if (dynamicParams != null && dynamicParams.ParameterNames.Contains(name))
+                {
+                    rawValue = dynamicParams.Get<object>(name);
+                }
+
                 var convertedValue = SqlParameterValueConverter.Convert(rawValue, p);
-                mappedParams.Add("@" + name, convertedValue, dbType: SqlParameterValueConverter.ToDbType(p.SqlDbType));
+
+                mappedParams.Add("@" + name, rawValue is null ? null : convertedValue, dbType: SqlParameterValueConverter.ToDbType(p.SqlDbType));
             }
 
             var result = (await connection.QueryAsync<TResult>(
