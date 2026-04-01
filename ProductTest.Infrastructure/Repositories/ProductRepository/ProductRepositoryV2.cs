@@ -118,7 +118,6 @@ public sealed class ProductRepositoryV2(
             request,
             cancellationToken);
         logger.LogInformation("GetAll returned {Count} products", dataSet.Tables[0].Rows.Count);
-        dataSet.Tables[0].TableName = "Product";
         return dataSet;
     }
 
